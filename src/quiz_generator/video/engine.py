@@ -35,7 +35,7 @@ from moviepy import (
     concatenate_audioclips,
     concatenate_videoclips,
 )
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from quiz_generator.audio.engine import QuizAudioPack
 from quiz_generator.audio.music_manager import MusicManager
