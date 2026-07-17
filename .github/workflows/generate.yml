@@ -105,12 +105,11 @@ jobs:
             TOPIC_ARG="--topic '${{ github.event.inputs.topic }}'"
           fi
 
-          python -m quiz_generator generate \
+          python -m quiz_generator --verbose generate \
             --type ${{ github.event.inputs.quiz_type }} \
             --difficulty ${{ github.event.inputs.difficulty }} \
             --questions ${{ github.event.inputs.num_questions }} \
-            $TOPIC_ARG \
-            --verbose
+            $TOPIC_ARG
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           QUIZ_GENERAL__IDIOMA: "es"
