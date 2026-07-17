@@ -16,8 +16,8 @@ general:
 # --- IA ---
 ia:
   proveedor: "gemini"                    # gemini | groq
-  modelo: "gemini-2.5-flash"            # Modelo de Gemini a usar
-  modelo_fallback: "gemini-2.0-flash"   # Modelo alternativo si el principal falla
+  modelo: "gemini-2.0-flash"            # Modelo de Gemini a usar
+  modelo_fallback: "gemini-1.5-flash"   # Modelo alternativo si el principal falla
   temperatura: 0.9                       # Creatividad (0.0 - 2.0)
   max_tokens: 4096                       # Tokens máximos por respuesta
   max_reintentos: 3                      # Reintentos ante fallos

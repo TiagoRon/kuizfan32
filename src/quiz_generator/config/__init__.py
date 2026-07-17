@@ -63,8 +63,8 @@ class IAConfig(BaseSettings):
     """Configuración del proveedor de IA."""
 
     proveedor: str = "gemini"
-    modelo: str = "gemini-2.5-flash"
-    modelo_fallback: str = "gemini-2.0-flash"
+    modelo: str = "gemini-2.0-flash"
+    modelo_fallback: str = "gemini-1.5-flash"
     temperatura: float = 0.9
     max_tokens: int = 4096
     max_reintentos: int = 3
