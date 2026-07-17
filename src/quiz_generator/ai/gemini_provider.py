@@ -113,40 +113,64 @@ class GeminiProvider(IAIProvider):
     ) -> str:
         """Envía un prompt a Gemini y retorna la respuesta en texto.
 
-        Incluye reintentos automáticos y manejo de errores.
+        Incluye reintentos automáticos y manejo de errores con fallback entre modelos.
         """
-        target_model = model or self._model
+        # Lista de modelos a intentar en orden, priorizando los que pidió el usuario
+        models_to_try = [
+            model if model else "gemini-2.5-flash",
+            "gemini-3.1-flash-lite",
+            "gemini-3.5-flash",
+            "gemini-2.0-flash",
+            "gemini-1.5-flash",
+        ]
+        
+        # Eliminar duplicados manteniendo el orden
+        seen = set()
+        models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
-        try:
-            response = self._client.models.generate_content(
-                model=target_model,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    temperature=self._settings.ia.temperatura,
-                    max_output_tokens=self._settings.ia.max_tokens,
-                    response_mime_type="application/json",
-                ),
-            )
-
-            if not response.text:
-                raise AIInvalidResponseError("Gemini", "Respuesta vacía del modelo")
-
-            # Tracking de tokens
-            if response.usage_metadata:
-                self._tokens_used += (
-                    response.usage_metadata.prompt_token_count
-                    + response.usage_metadata.candidates_token_count
+        last_error = None
+        
+        for current_model in models_to_try:
+            try:
+                response = self._client.models.generate_content(
+                    model=current_model,
+                    contents=prompt,
+                    config=genai_types.GenerateContentConfig(
+                        temperature=self._settings.ia.temperatura,
+                        max_output_tokens=self._settings.ia.max_tokens,
+                        response_mime_type="application/json",
+                    ),
                 )
 
-            return response.text
+                if not response.text:
+                    raise AIInvalidResponseError("Gemini", "Respuesta vacía del modelo")
 
-        except Exception as e:
-            error_str = str(e).lower()
-            if "rate" in error_str or "quota" in error_str or "429" in error_str:
-                raise AIRateLimitError("Gemini") from e
-            if "api key" in error_str or "401" in error_str or "403" in error_str:
-                raise MissingAPIKeyError("Gemini", "GEMINI_API_KEY") from e
-            raise AIProviderError("Gemini", str(e)) from e
+                # Tracking de tokens
+                if response.usage_metadata:
+                    self._tokens_used += (
+                        response.usage_metadata.prompt_token_count
+                        + response.usage_metadata.candidates_token_count
+                    )
+
+                return response.text
+
+            except Exception as e:
+                error_str = str(e).lower()
+                last_error = e
+                
+                # Si es un error de Rate Limit, lanzarlo para que Tenacity reintente
+                if "rate" in error_str or "quota" in error_str or "429" in error_str:
+                    raise AIRateLimitError("Gemini") from e
+                
+                # Error fatal de API Key
+                if "api key" in error_str or "401" in error_str or "403" in error_str:
+                    raise MissingAPIKeyError("Gemini", "GEMINI_API_KEY") from e
+                    
+                # Si el modelo no existe o falla, intentar con el siguiente
+                logger.warning("El modelo '%s' falló o no está disponible. Intentando con el siguiente... (Error: %s)", current_model, e)
+                continue
+
+        raise AIProviderError("Gemini", f"Todos los modelos fallaron. Último error: {last_error}")
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
         """Parsea la respuesta JSON de Gemini, manejando bloques de código."""
