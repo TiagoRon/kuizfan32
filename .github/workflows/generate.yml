@@ -91,6 +91,7 @@ jobs:
           echo "✅ API Key de Gemini configurada"
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          QUIZ_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 
       - name: 🗄️ Caché de Modelos (Hugging Face)
         uses: actions/cache@v4
@@ -112,6 +113,7 @@ jobs:
             $TOPIC_ARG
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          QUIZ_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           QUIZ_GENERAL__IDIOMA: "es"
 
       - name: 💾 Guardar memoria (Anti-repetición)
