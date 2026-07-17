@@ -30,6 +30,7 @@ from moviepy import (
     CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
+    VideoClip,
     VideoFileClip,
     concatenate_audioclips,
     concatenate_videoclips,
@@ -51,34 +52,6 @@ logger = logging.getLogger(__name__)
 def _pil_to_numpy(img: Image.Image) -> np.ndarray:
     """Convierte una imagen Pillow a array numpy para MoviePy."""
     return np.array(img.convert("RGB"))
-
-
-def _frames_to_clip(
-    frames: list[Image.Image],
-    fps: int,
-    duration: float | None = None,
-) -> ImageClip:
-    """Convierte una lista de frames Pillow a un clip de MoviePy.
-
-    Si hay menos frames que los necesarios para la duración, se repite
-    el último frame. Si hay más, se recortan.
-    """
-    if not frames:
-        raise ValueError("No hay frames para crear el clip")
-
-    if duration is None:
-        duration = len(frames) / fps
-
-    numpy_frames = [_pil_to_numpy(f) for f in frames]
-
-    def make_frame(t):
-        frame_idx = int(t * fps)
-        frame_idx = min(frame_idx, len(numpy_frames) - 1)
-        return numpy_frames[frame_idx]
-
-    from moviepy import VideoClip
-    clip = VideoClip(make_frame, duration=duration)
-    return clip
 
 
 class VideoEngine:
@@ -124,6 +97,10 @@ class VideoEngine:
         clips: list = []
 
         logger.info("Componiendo video: %d preguntas", len(quiz.preguntas))
+
+        # Descargar fuentes si es necesario
+        logger.info("Verificando fuentes...")
+        await self._composer._font_manager.download_fonts()
 
         # Pre-generar todos los SFX
         self._sfx_manager.generate_all()
@@ -221,31 +198,18 @@ class VideoEngine:
             audio = None
 
         num_frames = int(duration * self._fps)
+        particles = VisualEffects.create_particles(self._width, self._height, num_particles=25, seed=42)
 
-        # Generar frames animados: Ken Burns + Partículas
-        ken_burns_frames = VisualEffects.apply_ken_burns(
-            scene, num_frames, zoom_start=1.0, zoom_end=1.04,
-        )
+        def make_frame(t: float) -> np.ndarray:
+            # 1. Ken Burns
+            zoomed = VisualEffects.apply_ken_burns_lazy(
+                scene, t, duration, zoom_start=1.0, zoom_end=1.04,
+            )
+            # 2. Partículas
+            frame = VisualEffects.apply_particles_lazy(zoomed, t, particles)
+            return _pil_to_numpy(frame)
 
-        # Aplicar partículas sobre los frames de Ken Burns
-        animated_frames = VisualEffects.generate_particle_frames(
-            scene, num_frames, num_particles=25, seed=42,
-        )
-
-        # Combinar: usar Ken Burns como base, componer partículas encima
-        final_frames = []
-        for i in range(num_frames):
-            kb_frame = ken_burns_frames[i] if i < len(ken_burns_frames) else ken_burns_frames[-1]
-            pt_frame = animated_frames[i] if i < len(animated_frames) else animated_frames[-1]
-
-            # Blend sutil de las partículas sobre el Ken Burns
-            kb_arr = np.array(kb_frame, dtype=np.float64)
-            pt_arr = np.array(pt_frame, dtype=np.float64)
-            blended = np.clip(kb_arr * 0.85 + pt_arr * 0.15, 0, 255).astype(np.uint8)
-            final_frames.append(Image.fromarray(blended))
-
-        # Aplicar viñeta al primer frame base (se mantiene en todos)
-        clip = _frames_to_clip(final_frames, self._fps, duration)
+        clip = VideoClip(make_frame, duration=duration)
 
         # Añadir SFX de aparición
         sfx_clips = []
@@ -298,14 +262,13 @@ class VideoEngine:
                 audio = AudioFileClip(str(q_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
-        num_frames = int(duration * self._fps)
+        def make_frame(t: float) -> np.ndarray:
+            frame = VisualEffects.apply_ken_burns_lazy(
+                scene, t, duration, zoom_start=1.0, zoom_end=1.02,
+            )
+            return _pil_to_numpy(frame)
 
-        # Ken Burns sutil
-        frames = VisualEffects.apply_ken_burns(
-            scene, num_frames, zoom_start=1.0, zoom_end=1.02,
-        )
-
-        clip = _frames_to_clip(frames, self._fps, duration)
+        clip = VideoClip(make_frame, duration=duration)
 
         # SFX de aparición de pregunta
         audio_layers = []
@@ -347,40 +310,34 @@ class VideoEngine:
         ]
 
         total_duration = float(timer_seconds)
-        total_frames = int(total_duration * self._fps)
-        frames_per_second = self._fps
 
-        all_frames = []
+        # Pre-renderizar base limpia (sin timer) para evitar hacerlo 600 veces
+        base_scene = self._composer.render_question_scene(
+            question_number=question_idx + 1,
+            total_questions=len(quiz.preguntas),
+            question_text=pregunta.texto,
+            answers=answers_data,
+            timer_value=None,
+            emoji_pista=pregunta.emoji_pista,
+        )
 
-        for t in range(timer_seconds, 0, -1):
-            # Renderizar la escena base para este segundo
-            base_scene = self._composer.render_question_scene(
-                question_number=question_idx + 1,
-                total_questions=len(quiz.preguntas),
-                question_text=pregunta.texto,
-                answers=answers_data,
-                timer_value=t,
-                emoji_pista=pregunta.emoji_pista,
+        def make_frame(t: float) -> np.ndarray:
+            time_left = max(0.001, timer_seconds - t)
+            
+            # Dibujar el timer actual sobre una copia de la base
+            frame_with_timer = base_scene.copy()
+            draw = ImageDraw.Draw(frame_with_timer)
+            # Y fijo para el timer (se calcula igual que en composer.py)
+            self._composer._draw_premium_timer(draw, time_left, y=410)
+            
+            # Ken Burns sutil continuo a lo largo de todo el countdown
+            final_frame = VisualEffects.apply_ken_burns_lazy(
+                frame_with_timer, t, total_duration,
+                zoom_start=1.0, zoom_end=1.04,
             )
+            return _pil_to_numpy(final_frame)
 
-            # Generar frames de Ken Burns para este segundo
-            second_frames = VisualEffects.apply_ken_burns(
-                base_scene,
-                frames_per_second,
-                zoom_start=1.0 + (timer_seconds - t) * 0.002,
-                zoom_end=1.0 + (timer_seconds - t + 1) * 0.002,
-            )
-
-            all_frames.extend(second_frames)
-
-        # Asegurar que tenemos exactamente total_frames
-        if len(all_frames) > total_frames:
-            all_frames = all_frames[:total_frames]
-        while len(all_frames) < total_frames:
-            all_frames.append(all_frames[-1] if all_frames else
-                              Image.new("RGB", (self._width, self._height), (0, 0, 0)))
-
-        clip = _frames_to_clip(all_frames, self._fps, total_duration)
+        clip = VideoClip(make_frame, duration=total_duration)
 
         # Agregar ticks de countdown como audio
         audio_layers = []
@@ -461,26 +418,16 @@ class VideoEngine:
                 audio = AudioFileClip(str(a_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
-        num_frames = int(duration * self._fps)
+        def make_frame(t: float) -> np.ndarray:
+            # 1. Ken Burns
+            zoomed = VisualEffects.apply_ken_burns_lazy(
+                reveal_scene, t, duration, zoom_start=1.01, zoom_end=1.03,
+            )
+            # 2. Flash decay
+            flashed = VisualEffects.apply_flash_lazy(zoomed, t, duration=0.5, peak_intensity=0.6)
+            return _pil_to_numpy(flashed)
 
-        # Generar frames: flash inicial + reveal con Ken Burns
-        flash_frames = VisualEffects.generate_flash_frames(
-            reveal_scene, num_frames=6, peak_intensity=0.6,
-        )
-
-        remaining_frames = num_frames - len(flash_frames)
-        ken_burns_frames = VisualEffects.apply_ken_burns(
-            reveal_scene, max(1, remaining_frames),
-            zoom_start=1.01, zoom_end=1.03,
-        )
-
-        all_frames = flash_frames + ken_burns_frames
-        if len(all_frames) > num_frames:
-            all_frames = all_frames[:num_frames]
-        while len(all_frames) < num_frames:
-            all_frames.append(all_frames[-1])
-
-        clip = _frames_to_clip(all_frames, self._fps, duration)
+        clip = VideoClip(make_frame, duration=duration)
 
         # Intentar overlay de video de Pexels
         if correct_text in answer_videos:
@@ -531,26 +478,16 @@ class VideoEngine:
         else:
             audio = None
 
-        num_frames = int(duration * self._fps)
+        particles = VisualEffects.create_particles(self._width, self._height, num_particles=20, seed=99)
 
-        # Ken Burns + partículas
-        kb_frames = VisualEffects.apply_ken_burns(
-            scene, num_frames, zoom_start=1.0, zoom_end=1.03,
-        )
-        particle_frames = VisualEffects.generate_particle_frames(
-            scene, num_frames, num_particles=20, seed=99,
-        )
+        def make_frame(t: float) -> np.ndarray:
+            zoomed = VisualEffects.apply_ken_burns_lazy(
+                scene, t, duration, zoom_start=1.0, zoom_end=1.03,
+            )
+            frame = VisualEffects.apply_particles_lazy(zoomed, t, particles)
+            return _pil_to_numpy(frame)
 
-        final_frames = []
-        for i in range(num_frames):
-            kb = kb_frames[i] if i < len(kb_frames) else kb_frames[-1]
-            pt = particle_frames[i] if i < len(particle_frames) else particle_frames[-1]
-            kb_arr = np.array(kb, dtype=np.float64)
-            pt_arr = np.array(pt, dtype=np.float64)
-            blended = np.clip(kb_arr * 0.85 + pt_arr * 0.15, 0, 255).astype(np.uint8)
-            final_frames.append(Image.fromarray(blended))
-
-        clip = _frames_to_clip(final_frames, self._fps, duration)
+        clip = VideoClip(make_frame, duration=duration)
 
         # Audio + fanfare SFX
         audio_layers = []

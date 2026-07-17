@@ -212,8 +212,130 @@ class VisualEffects:
         draw.text((x, y), text, fill=fill, font=font)
 
     # =========================================================================
-    # Efectos Animados (generan secuencias de frames)
+    # Efectos Animados Eager (Generan listas de imágenes)
+    # NOTA: Mantener por compatibilidad, pero preferir las versiones "lazy" 
+    #       para la composición de video.
     # =========================================================================
+
+    @staticmethod
+    def create_particles(
+        width: int, 
+        height: int, 
+        num_particles: int = 30, 
+        seed: int = 0,
+    ) -> list[dict]:
+        """Crea la definición matemática de las partículas flotantes.
+        
+        Útil para evaluación lazy (sin estado).
+        """
+        rng = random.Random(seed)
+        colors = [
+            (255, 215, 0, 120),    # Dorado
+            (108, 92, 231, 100),   # Violeta
+            (0, 206, 209, 110),    # Turquesa
+            (255, 105, 180, 90),   # Rosa
+            (0, 230, 118, 100),    # Verde
+        ]
+
+        particles = []
+        for _ in range(num_particles):
+            particles.append({
+                "start_x": rng.uniform(0, width),
+                "start_y": rng.uniform(0, height + 200),
+                "size": rng.uniform(3, 8),
+                "speed_y": rng.uniform(-40, -15),  # pixeles por segundo
+                "speed_x": rng.uniform(-10, 10),
+                "wobble_amp": rng.uniform(10, 40),
+                "wobble_freq": rng.uniform(1, 3), # radianes por segundo
+                "color": rng.choice(colors),
+                "phase": rng.uniform(0, 2 * math.pi),
+            })
+        return particles
+
+    @staticmethod
+    def apply_particles_lazy(
+        base_img: Image.Image,
+        t: float,
+        particles: list[dict],
+    ) -> Image.Image:
+        """Aplica partículas sobre un único frame en el instante t.
+        
+        Evaluación lazy matemática, no requiere estado previo.
+        """
+        width, height = base_img.size
+        result = base_img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        for p in particles:
+            # Calcular posición en el tiempo t
+            raw_y = p["start_y"] + p["speed_y"] * t
+            raw_x = p["start_x"] + p["speed_x"] * t + p["wobble_amp"] * math.sin(t * p["wobble_freq"] + p["phase"])
+            
+            # Wrap around (toroide)
+            y = raw_y % (height + 40) - 20
+            x = raw_x % (width + 40) - 20
+
+            # Fade near top/bottom center (y = height/2 es opacidad máxima)
+            alpha_ratio = 1 - abs(y / height - 0.5) * 0.8
+            alpha = int(p["color"][3] * alpha_ratio)
+            alpha = max(0, min(255, alpha))
+            size = int(p["size"])
+
+            draw.ellipse(
+                (int(x) - size, int(y) - size,
+                 int(x) + size, int(y) + size),
+                fill=(*p["color"][:3], alpha),
+            )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+
+    @staticmethod
+    def apply_ken_burns_lazy(
+        img: Image.Image,
+        t: float,
+        duration: float,
+        zoom_start: float = 1.0,
+        zoom_end: float = 1.03,
+    ) -> Image.Image:
+        """Aplica Ken Burns zoom sobre un único frame en el instante t.
+        
+        Usa interpolación BILINEAR que es suficientemente rápida para
+        ejecución real-time durante la composición de MoviePy.
+        """
+        # Calcular factor de zoom (ease-in-out)
+        progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+        progress_eased = progress * progress * (3 - 2 * progress)
+        factor = zoom_start + (zoom_end - zoom_start) * progress_eased
+
+        width, height = img.size
+        new_w = int(width * factor)
+        new_h = int(height * factor)
+
+        # Usar BILINEAR que es muy rápido (~10ms) en lugar de LANCZOS (~80ms)
+        zoomed = img.resize((new_w, new_h), Image.BILINEAR)
+        left = (new_w - width) // 2
+        top = (new_h - height) // 2
+        return zoomed.crop((left, top, left + width, top + height))
+
+    @staticmethod
+    def apply_flash_lazy(
+        img: Image.Image,
+        t: float,
+        duration: float = 0.5,
+        color: tuple[int, int, int] = (255, 255, 255),
+        peak_intensity: float = 0.7,
+    ) -> Image.Image:
+        """Aplica un destello sobre un único frame en el instante t."""
+        progress = max(0.0, min(1.0, t / duration))
+        if progress >= 1.0:
+            return img.copy()
+
+        # Decaimiento exponencial (rápido al principio, lento al final)
+        intensity = peak_intensity * math.exp(-4 * progress)
+        flash_layer = Image.new("RGB", img.size, color)
+        return Image.blend(img, flash_layer, max(0, min(1, intensity)))
 
     @staticmethod
     def generate_particle_frames(

@@ -492,7 +492,7 @@ class SceneComposer:
         total_questions: int,
         question_text: str,
         answers: list[dict[str, Any]],
-        timer_value: int | None = None,
+        timer_value: float | None = None,
         emoji_pista: str | None = None,
         show_correct: bool = False,
         correct_index: int | None = None,
@@ -808,19 +808,25 @@ class SceneComposer:
     def _draw_premium_timer(
         self,
         draw: ImageDraw.ImageDraw,
-        value: int,
+        value: float,
         y: int,
     ) -> None:
-        """Dibuja el temporizador circular premium."""
+        """Dibuja el temporizador circular premium.
+        
+        Soporta valores float para animar el arco de forma continua,
+        mientras el texto interior muestra el número redondeado hacia arriba.
+        """
         timer_font = self._get_font(
             self._fonts_config.principal,
             self._fonts_config.tamanio_timer,
         )
 
-        # Color según tiempo restante
-        if value <= 3:
+        # Color según tiempo restante (usar ceil para los cambios de color exactos al segundo)
+        display_value = max(1, math.ceil(value))
+        
+        if display_value <= 3:
             color = self._hex_to_rgb(self._colors.incorrecto)
-        elif value <= 5:
+        elif display_value <= 5:
             color = self._hex_to_rgb(self._colors.advertencia)
         else:
             color = self._hex_to_rgb(self._colors.primario)
@@ -836,8 +842,11 @@ class SceneComposer:
             width=6,
         )
 
-        # Arco de progreso (basado en el valor del timer)
-        arc_angle = int(360 * (value / 10))
+        # Arco de progreso (basado en el valor exacto float del timer)
+        # Asumiendo 10 segundos como máximo estándar (ajustable si varía)
+        # Para evitar que el arco empiece a bajar desde el primer frame, mapeamos:
+        progress = max(0.0, min(1.0, value / 10.0)) 
+        arc_angle = int(360 * progress)
         if arc_angle > 0:
             draw.arc(
                 (center_x - radius, y, center_x + radius, y + radius * 2),
@@ -846,8 +855,8 @@ class SceneComposer:
                 width=6,
             )
 
-        # Número centrado
-        text = str(value)
+        # Número centrado (siempre entero redondeado hacia arriba)
+        text = str(display_value)
         bbox = draw.textbbox((0, 0), text, font=timer_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
