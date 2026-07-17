@@ -1,0 +1,32 @@
+Eres un experto en SEO y marketing de contenido para YouTube Shorts, TikTok e Instagram Reels.
+
+## Tu Tarea
+
+Genera los metadatos de publicación para un video de quiz con las siguientes preguntas:
+
+{% for pregunta in preguntas %}
+{{ loop.index }}. {{ pregunta }}
+{% endfor %}
+
+**Tipo de quiz**: {{ quiz_type_display }}
+**Idioma**: Español
+
+## Requisitos
+
+- **Título**: Atractivo, con emojis, máximo 80 caracteres. Debe generar CURIOSIDAD.
+- **Descripción**: 2-3 oraciones, incluyendo CTA para comentarios y seguir la cuenta.
+- **Hashtags**: 10-15 hashtags relevantes, mezclando populares y de nicho.
+- **Prompt de miniatura**: Descripción detallada para diseñar una miniatura CTR-friendly.
+- **CTA**: Llamado a la acción final del video (comentar, compartir, seguir).
+
+## Formato de Respuesta
+
+```json
+{
+  "titulo": "Título viral con emojis",
+  "descripcion": "Descripción atractiva...",
+  "hashtags": ["quiz", "trivia", ...],
+  "prompt_miniatura": "Descripción visual para la miniatura...",
+  "cta": "¡Comenta cuántas acertaste! 🎯"
+}
+```

@@ -1,0 +1,179 @@
+# ==============================================================================
+# AI Viral Quiz Generator — Configuración por Defecto
+# ==============================================================================
+# Este archivo contiene TODOS los valores por defecto del sistema.
+# Para personalizar, crea un archivo config/config.yaml con solo los
+# valores que deseas cambiar — se fusionarán con estos defaults.
+# ==============================================================================
+
+# --- General ---
+general:
+  idioma: "es"
+  dificultad_default: "medio"
+  num_preguntas_default: 8
+  tema_default: null
+
+# --- IA ---
+ia:
+  proveedor: "gemini"                    # gemini | groq
+  modelo: "gemini-2.5-flash"            # Modelo de Gemini a usar
+  modelo_fallback: "gemini-2.0-flash"   # Modelo alternativo si el principal falla
+  temperatura: 0.9                       # Creatividad (0.0 - 2.0)
+  max_tokens: 4096                       # Tokens máximos por respuesta
+  max_reintentos: 3                      # Reintentos ante fallos
+  timeout: 60                            # Timeout en segundos
+
+# --- TTS (Texto a Voz) ---
+tts:
+  proveedor: "edge_tts"                 # edge_tts | elevenlabs | openai_tts
+  voz: "es-MX-DaliaNeural"             # Voz por defecto
+  velocidad: 1.1                         # 1.0 = normal, 1.1 = ligeramente rápido
+  voces_disponibles:
+    - id: "es-MX-DaliaNeural"
+      nombre: "Dalia (México)"
+      genero: "femenino"
+    - id: "es-MX-JorgeNeural"
+      nombre: "Jorge (México)"
+      genero: "masculino"
+    - id: "es-ES-ElviraNeural"
+      nombre: "Elvira (España)"
+      genero: "femenino"
+    - id: "es-AR-ElenaNeural"
+      nombre: "Elena (Argentina)"
+      genero: "femenino"
+    - id: "es-CO-SalomeNeural"
+      nombre: "Salomé (Colombia)"
+      genero: "femenino"
+
+# --- Video ---
+video:
+  ancho: 1080
+  alto: 1920
+  fps: 60
+  aspecto: "9:16"
+
+  # Colores del tema (modo oscuro estilo MrBeast/viral)
+  colores:
+    fondo: "#0F0F1A"
+    fondo_secundario: "#1A1A2E"
+    primario: "#6C5CE7"
+    primario_claro: "#A29BFE"
+    secundario: "#00CEC9"
+    correcto: "#00E676"
+    incorrecto: "#FF1744"
+    advertencia: "#FFD600"
+    texto: "#FFFFFF"
+    texto_secundario: "#B0B0B0"
+    texto_oscuro: "#2D2D3A"
+    gradiente_inicio: "#6C5CE7"
+    gradiente_fin: "#00CEC9"
+
+  # Tipografía
+  fuentes:
+    principal: "Montserrat"
+    secundaria: "Inter"
+    emoji: "Segoe UI Emoji"
+    tamanio_titulo: 64
+    tamanio_pregunta: 48
+    tamanio_respuesta: 40
+    tamanio_hook: 56
+    tamanio_timer: 72
+    tamanio_subtitulo: 36
+
+  # Tiempos (segundos)
+  tiempos:
+    intro: 2.0
+    hook: 3.0
+    pregunta_lectura: 2.0         # Tiempo para leer la pregunta antes del timer
+    tiempo_por_pregunta: 10       # Cuenta regresiva por pregunta
+    revelacion: 2.5               # Tiempo mostrando la respuesta correcta
+    curiosidad: 3.0               # Tiempo mostrando dato curioso
+    transicion: 0.5               # Duración de transiciones
+    outro: 3.0                    # CTA final
+    pausa_entre_preguntas: 0.3    # Pausa mínima entre preguntas
+
+  # Efectos
+  efectos:
+    shake_habilitado: true
+    shake_intensidad: 5           # Píxeles de desplazamiento
+    flash_habilitado: true
+    flash_duracion: 0.15          # Segundos
+    zoom_habilitado: true
+    zoom_factor: 1.05
+    particulas_habilitadas: false # Deshabilitado por defecto (costoso)
+    confeti_habilitado: true
+    progress_bar_habilitado: true
+    timer_habilitado: true
+    subtitulos_habilitados: true
+
+# --- Anti-Repetición ---
+anti_repeticion:
+  habilitado: true
+  modelo_embeddings: "all-MiniLM-L6-v2"
+  umbral_similitud: 0.85          # 0.0 - 1.0 (mayor = más estricto)
+  ruta_almacen: "data/embeddings"
+
+# --- Exportación ---
+exportacion:
+  formato: "mp4_h264"
+  calidad: "alta"
+  codec: "libx264"
+  preset: "medium"                # ultrafast | fast | medium | slow | veryslow
+  crf: 18                        # Factor de calidad (0-51, menor = mejor)
+  audio_bitrate: "192k"
+  directorio_salida: "output"
+
+# --- Assets ---
+assets:
+  directorio_cache: "cache/assets"
+  directorio_sonidos: "assets/sounds"
+  directorio_musica: "assets/music"
+  directorio_fuentes: "assets/fonts"
+  directorio_imagenes: "assets/images"
+  max_cache_mb: 500               # Tamaño máximo de caché en MB
+
+# --- Base de Datos ---
+base_datos:
+  url: "sqlite+aiosqlite:///./data/quiz_generator.db"
+  echo: false                     # True para ver queries SQL en logs
+
+# --- Hooks Predefinidos ---
+hooks:
+  plantillas:
+    - "🧠 Solo el 1% responde TODAS correctamente"
+    - "😱 Si fallas la última, NO eres un verdadero fan"
+    - "🔥 ¿Puedes superar el nivel IMPOSIBLE?"
+    - "⚡ Tienes 10 segundos por pregunta. ¿Llegarás al final?"
+    - "🤯 La pregunta 7 es IMPOSIBLE de adivinar"
+    - "💀 El 99% falla en la pregunta 5"
+    - "🏆 Demuestra que eres un GENIO"
+    - "😤 No pases al siguiente video sin intentarlo"
+    - "🎯 Si aciertas 8 de 10, eres un CRACK"
+    - "👀 Nadie ha logrado responder la última"
+
+# --- Psicología Viral ---
+viral:
+  disparadores_por_video: 3      # Mínimo de disparadores virales por video
+  estrategias:
+    - tipo: "curiosidad"
+      descripcion: "Abrir un bucle de curiosidad que solo se cierra con la respuesta"
+    - tipo: "competencia"
+      descripcion: "Desafiar al espectador con estadísticas ('solo el X% puede...')"
+    - tipo: "sorpresa"
+      descripcion: "Incluir respuestas inesperadas que generen reacción"
+    - tipo: "identidad"
+      descripcion: "Apelar a la identidad del espectador ('los verdaderos fans...')"
+    - tipo: "urgencia"
+      descripcion: "Crear presión temporal con temporizadores y cuenta regresiva"
+    - tipo: "fomo"
+      descripcion: "Hacer sentir que se pierden algo si no ven el video completo"
+    - tipo: "recompensa"
+      descripcion: "Dar satisfacción emocional por cada respuesta correcta"
+    - tipo: "humor"
+      descripcion: "Incluir elementos cómicos o datos absurdos para generar risas"
+
+# --- GitHub Actions ---
+github_actions:
+  timeout_minutos: 30
+  artefacto_nombre: "quiz-video"
+  retener_dias: 7

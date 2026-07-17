@@ -1,0 +1,79 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+dist/
+build/
+*.egg-info/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment variables
+.env
+
+# Database
+*.db
+*.sqlite3
+
+# Cache
+.cache/
+.quiz_cache/
+cache/
+
+# Generated content
+output/
+generated/
+exports/
+
+# FAISS indices
+*.faiss
+faiss_store/
+
+# Audio temp files
+*.mp3
+*.wav
+*.ogg
+!assets/sounds/*.mp3
+!assets/music/*.mp3
+
+# Video temp files
+*.mp4
+*.avi
+*.mov
+!output/**/*.mp4
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Coverage
+htmlcov/
+.coverage
+coverage.xml
+
+# mypy
+.mypy_cache/
+
+# ruff
+.ruff_cache/
+
+# pytest
+.pytest_cache/
+
+# Logs
+*.log
+logs/

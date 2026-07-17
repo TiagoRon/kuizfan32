@@ -1,0 +1,160 @@
+name: 🎬 Generar Video de Quiz
+
+on:
+  workflow_dispatch:
+    inputs:
+      quiz_type:
+        description: "Tipo de quiz"
+        required: true
+        default: "trivia"
+        type: choice
+        options:
+          - trivia
+          - true_or_false
+          - would_you_rather
+          - emoji_quiz
+          - guess_flag
+          - guess_pokemon
+          - guess_character
+          - guess_country
+          - guess_logo
+          - guess_movie
+          - guess_song
+          - guess_animal
+          - guess_brand
+          - guess_food
+          - guess_celebrity
+          - guess_football_player
+          - guess_car
+          - brain_teaser
+          - impossible_quiz
+          - riddle
+          - fast_choice
+          - survival_choice
+      difficulty:
+        description: "Dificultad"
+        required: true
+        default: "medio"
+        type: choice
+        options:
+          - facil
+          - medio
+          - dificil
+          - imposible
+      num_questions:
+        description: "Número de preguntas (3-20)"
+        required: true
+        default: "8"
+        type: string
+      topic:
+        description: "Tema específico (opcional, ej: 'Pokémon Gen 1')"
+        required: false
+        default: ""
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  generate-video:
+    name: 🧠 Generar Quiz y Renderizar Video
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 Checkout del repositorio
+        uses: actions/checkout@v4
+
+      - name: 🐍 Configurar Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: 🎥 Instalar FFmpeg
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq ffmpeg
+
+      - name: 📦 Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[dev]"
+
+      - name: 🔑 Verificar API Key
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo "❌ Error: GEMINI_API_KEY no está configurada."
+            echo "Ve a Settings → Secrets → Actions y agrega GEMINI_API_KEY"
+            exit 1
+          fi
+          echo "✅ API Key de Gemini configurada"
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+
+      - name: 🗄️ Caché de Modelos (Hugging Face)
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-huggingface-all-MiniLM-L6-v2
+
+      - name: 🧠 Generar video
+        run: |
+          TOPIC_ARG=""
+          if [ -n "${{ github.event.inputs.topic }}" ]; then
+            TOPIC_ARG="--topic '${{ github.event.inputs.topic }}'"
+          fi
+
+          python -m quiz_generator generate \
+            --type ${{ github.event.inputs.quiz_type }} \
+            --difficulty ${{ github.event.inputs.difficulty }} \
+            --questions ${{ github.event.inputs.num_questions }} \
+            $TOPIC_ARG \
+            --verbose
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          QUIZ_GENERAL__IDIOMA: "es"
+
+      - name: 💾 Guardar memoria (Anti-repetición)
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add db/
+          if git diff --staged --quiet; then
+            echo "No hay cambios nuevos en la memoria."
+          else
+            git commit -m "chore: actualizar memoria anti-repetición [skip ci]"
+            git push
+            echo "✅ Memoria guardada exitosamente."
+          fi
+
+      - name: 📤 Subir video como artefacto
+        uses: actions/upload-artifact@v4
+        with:
+          name: quiz-video-${{ github.event.inputs.quiz_type }}-${{ github.run_number }}
+          path: |
+            output/**/*.mp4
+            output/**/metadata.json
+          retention-days: 7
+          if-no-files-found: error
+
+      - name: 📊 Resumen de la generación
+        if: always()
+        run: |
+          echo "## 🎬 Resultado de la Generación" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Parámetro | Valor |" >> $GITHUB_STEP_SUMMARY
+          echo "|:---|:---|" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tipo** | ${{ github.event.inputs.quiz_type }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Dificultad** | ${{ github.event.inputs.difficulty }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Preguntas** | ${{ github.event.inputs.num_questions }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| **Tema** | ${{ github.event.inputs.topic || 'Aleatorio' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if ls output/**/*.mp4 1>/dev/null 2>&1; then
+            echo "✅ **Video generado exitosamente**" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "Descarga el artefacto desde la pestaña 'Artifacts' de este workflow." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Error: No se generó el video**" >> $GITHUB_STEP_SUMMARY
+          fi
