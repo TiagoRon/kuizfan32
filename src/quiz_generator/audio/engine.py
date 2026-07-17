@@ -1,11 +1,14 @@
-"""Motor de audio — orquesta la generación de TTS y la selección de música.
+"""Motor de audio — orquesta la generación de TTS, SFX y música.
 
 Genera todos los segmentos de audio de un quiz:
 - Hook de apertura
 - Lectura de cada pregunta
 - Revelación de respuesta
-- Datos curiosos
 - CTA de cierre
+- Efectos de sonido (SFX)
+- Música de fondo
+
+NO genera audio de datos curiosos (eliminado para mejor ritmo).
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ class AudioSegment:
     text: str
     timestamps: list[dict[str, Any]] = field(default_factory=list)
     duration_ms: int = 0
-    segment_type: str = ""  # hook, question, answer, curiosity, cta
+    segment_type: str = ""  # hook, question, answer, cta
 
 
 @dataclass
@@ -40,7 +43,6 @@ class QuizAudioPack:
     hook: AudioSegment | None = None
     questions: list[AudioSegment] = field(default_factory=list)
     answers: list[AudioSegment] = field(default_factory=list)
-    curiosities: list[AudioSegment] = field(default_factory=list)
     cta: AudioSegment | None = None
     total_duration_ms: int = 0
 
@@ -50,11 +52,12 @@ class AudioEngine:
 
     Coordina la generación de todos los segmentos de audio
     necesarios para un video de quiz completo.
+    NO genera datos curiosos — eliminados para mejor ritmo.
     """
 
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._tts = EdgeTTSProvider()  # Proveedor por defecto (gratuito)
+        self._tts = EdgeTTSProvider()
 
     async def generate_quiz_audio(
         self,
@@ -91,7 +94,7 @@ class AudioEngine:
             segment_type="hook",
         )
 
-        # 2. Generar audio de cada pregunta
+        # 2. Generar audio de cada pregunta y respuesta
         for i, pregunta in enumerate(quiz.preguntas):
             logger.info("Generando audio pregunta %d/%d...", i + 1, len(quiz.preguntas))
 
@@ -131,22 +134,6 @@ class AudioEngine:
                     segment_type="answer",
                 ))
 
-            # Audio del dato curioso (si existe)
-            if pregunta.curiosidad:
-                c_path = output_dir / f"curiosity_{i:02d}.mp3"
-                c_audio, c_timestamps = await self._tts.synthesize_with_timestamps(
-                    text=pregunta.curiosidad,
-                    output_path=c_path,
-                    voice=voice,
-                    rate=rate,
-                )
-                pack.curiosities.append(AudioSegment(
-                    audio_path=c_audio,
-                    text=pregunta.curiosidad,
-                    timestamps=c_timestamps,
-                    segment_type="curiosity",
-                ))
-
         # 3. Generar audio del CTA
         if quiz.metadata.cta:
             logger.info("Generando audio del CTA...")
@@ -165,8 +152,8 @@ class AudioEngine:
             )
 
         logger.info(
-            "Audio generado: hook + %d preguntas + %d respuestas + %d curiosidades + CTA",
-            len(pack.questions), len(pack.answers), len(pack.curiosities),
+            "Audio generado: hook + %d preguntas + %d respuestas + CTA",
+            len(pack.questions), len(pack.answers),
         )
 
         return pack

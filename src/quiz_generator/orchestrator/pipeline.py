@@ -27,6 +27,7 @@ from quiz_generator.core.exceptions import DuplicateContentError, PipelineError
 from quiz_generator.core.models import GenerationRequest, GenerationResult, Quiz
 from quiz_generator.plugins.registry import PluginRegistry, discover_and_register_builtin_plugins
 from quiz_generator.video.engine import VideoEngine
+from quiz_generator.video.video_fetcher import VideoFetcher
 
 logger = logging.getLogger(__name__)
 
@@ -45,6 +46,10 @@ class GenerationPipeline:
         self._video_engine = VideoEngine(self._settings)
         self._anti_rep = AntiRepetitionEngine(self._settings)
         self._registry = discover_and_register_builtin_plugins()
+        self._video_fetcher = VideoFetcher(
+            api_key=self._settings.pexels_api_key,
+            cache_dir=self._settings.assets.directorio_cache + "/videos",
+        )
 
         # Callbacks de progreso
         self._progress_callback: Any = None
@@ -114,13 +119,24 @@ class GenerationPipeline:
             audio_dir = output_dir / "audio"
             audio_pack = await self._audio_engine.generate_quiz_audio(quiz, audio_dir)
 
-            # Paso 6: Componer video
+            # Paso 6: Descargar videos de respuesta (Pexels)
+            answer_videos: dict[str, Path] = {}
+            if self._video_fetcher.is_available:
+                self._report_progress(
+                    PipelineStep.DESCARGAR_ASSETS, 0.55,
+                    "Descargando videos de respuesta...",
+                )
+                answer_videos = await self._download_answer_videos(quiz)
+
+            # Paso 7: Componer video
             self._report_progress(
                 PipelineStep.COMPONER_VIDEO, 0.6,
                 "Componiendo video...",
             )
             video_path = output_dir / f"{quiz.id}.mp4"
-            await self._video_engine.compose_video(quiz, audio_pack, video_path)
+            await self._video_engine.compose_video(
+                quiz, audio_pack, video_path, answer_videos=answer_videos,
+            )
 
             # Paso 7: Registrar en anti-repetición
             self._report_progress(
@@ -212,6 +228,21 @@ class GenerationPipeline:
 
         # Persistir
         await self._anti_rep.flush()
+
+    async def _download_answer_videos(self, quiz: Quiz) -> dict[str, Path]:
+        """Descarga videos de Pexels para las respuestas correctas."""
+        keywords = []
+        for pregunta in quiz.preguntas:
+            correcta = next(
+                (r.texto for r in pregunta.respuestas if r.es_correcta),
+                None,
+            )
+            if correcta:
+                keywords.append(correcta)
+
+        result = await self._video_fetcher.fetch_videos_batch(keywords)
+        # Filtrar None values
+        return {k: v for k, v in result.items() if v is not None}
 
 
 async def run_generation(

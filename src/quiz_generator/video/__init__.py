@@ -1,1 +1,1 @@
-"""Paquete del motor de generación de video."""
+"""Paquete del motor de video (composición, efectos, fuentes, videos)."""

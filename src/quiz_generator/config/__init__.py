@@ -127,11 +127,10 @@ class TiemposConfig(BaseSettings):
     hook: float = 3.0
     pregunta_lectura: float = 2.0
     tiempo_por_pregunta: int = 10
-    revelacion: float = 2.5
-    curiosidad: float = 3.0
+    revelacion: float = 2.0
     transicion: float = 0.5
     outro: float = 3.0
-    pausa_entre_preguntas: float = 0.3
+    pausa_entre_preguntas: float = 0.2
 
 
 class EfectosConfig(BaseSettings):
@@ -150,6 +149,24 @@ class EfectosConfig(BaseSettings):
     subtitulos_habilitados: bool = True
 
 
+class MusicConfig(BaseSettings):
+    """Configuración de música de fondo."""
+
+    habilitada: bool = True
+    volumen: float = 0.15
+    bpm: int = 125
+    ducking_nivel: float = 0.3
+    ducking_attack: float = 0.1
+    ducking_release: float = 0.3
+
+
+class SFXConfig(BaseSettings):
+    """Configuración de efectos de sonido."""
+
+    habilitados: bool = True
+    volumen: float = 0.6
+
+
 class VideoConfig(BaseSettings):
     """Configuración completa de video."""
 
@@ -161,6 +178,8 @@ class VideoConfig(BaseSettings):
     fuentes: FuentesConfig = Field(default_factory=FuentesConfig)
     tiempos: TiemposConfig = Field(default_factory=TiemposConfig)
     efectos: EfectosConfig = Field(default_factory=EfectosConfig)
+    musica: MusicConfig = Field(default_factory=MusicConfig)
+    sfx: SFXConfig = Field(default_factory=SFXConfig)
 
 
 class AntiRepeticionConfig(BaseSettings):
@@ -232,6 +251,7 @@ class Settings(BaseSettings):
     groq_api_key: str = ""
     elevenlabs_api_key: str = ""
     openai_api_key: str = ""
+    pexels_api_key: str = ""
 
     # Sub-configuraciones
     general: GeneralConfig = Field(default_factory=GeneralConfig)

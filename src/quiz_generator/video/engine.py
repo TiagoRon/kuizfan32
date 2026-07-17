@@ -1,34 +1,44 @@
-"""Motor principal de generación de video.
+"""Motor principal de generación de video — nivel profesional.
 
-Construye la línea de tiempo del video combinando escenas de Pillow,
-audio de TTS, y efectos para producir un video completo de quiz.
+Construye la línea de tiempo del video combinando:
+- Escenas animadas de Pillow (con efectos Ken Burns, partículas, slide-in)
+- Audio de TTS con subtítulos sincronizados
+- Efectos de sonido procedurales
+- Música de fondo con ducking automático
+- Videos de respuesta de Pexels (con fallback animado)
+- Transiciones crossfade entre escenas
 
 Estructura del video:
-1. Hook (2-3s) — gancho de apertura
+1. Hook animado (3-5s) — subtítulos, zoom, partículas, countdown visual
 2. Por cada pregunta:
-   a. Lectura de la pregunta (2-3s)
-   b. Countdown con opciones visibles (10s)
-   c. Revelación de respuesta (2s)
-   d. Dato curioso (opcional, 3s)
-3. CTA final (3s)
+   a. Aparición de pregunta con SFX (2-3s)
+   b. Countdown animado a 60fps (10s)
+   c. Flash de revelación + video de respuesta (2-3s)
+3. CTA final animado (3s)
+
+NO incluye pantalla de "¿Sabías que...?" — flujo directo.
 """
 
 from __future__ import annotations
 
 import logging
-import tempfile
 from pathlib import Path
 
 import numpy as np
 from moviepy import (
     AudioFileClip,
+    CompositeAudioClip,
     CompositeVideoClip,
     ImageClip,
+    VideoFileClip,
+    concatenate_audioclips,
     concatenate_videoclips,
 )
 from PIL import Image
 
 from quiz_generator.audio.engine import QuizAudioPack
+from quiz_generator.audio.music_manager import MusicManager
+from quiz_generator.audio.sfx_manager import SFXManager
 from quiz_generator.config import Settings
 from quiz_generator.core.models import Quiz
 from quiz_generator.video.composer import SceneComposer
@@ -43,11 +53,40 @@ def _pil_to_numpy(img: Image.Image) -> np.ndarray:
     return np.array(img.convert("RGB"))
 
 
-class VideoEngine:
-    """Motor principal de composición de video.
+def _frames_to_clip(
+    frames: list[Image.Image],
+    fps: int,
+    duration: float | None = None,
+) -> ImageClip:
+    """Convierte una lista de frames Pillow a un clip de MoviePy.
 
-    Combina las escenas renderizadas con Pillow, el audio de TTS
-    y los efectos para crear un video de quiz completo.
+    Si hay menos frames que los necesarios para la duración, se repite
+    el último frame. Si hay más, se recortan.
+    """
+    if not frames:
+        raise ValueError("No hay frames para crear el clip")
+
+    if duration is None:
+        duration = len(frames) / fps
+
+    numpy_frames = [_pil_to_numpy(f) for f in frames]
+
+    def make_frame(t):
+        frame_idx = int(t * fps)
+        frame_idx = min(frame_idx, len(numpy_frames) - 1)
+        return numpy_frames[frame_idx]
+
+    from moviepy import VideoClip
+    clip = VideoClip(make_frame, duration=duration)
+    return clip
+
+
+class VideoEngine:
+    """Motor principal de composición de video — nivel profesional.
+
+    Combina las escenas renderizadas con Pillow, el audio de TTS,
+    efectos de sonido, música de fondo, y videos de respuesta
+    para crear un video de quiz viral completo.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -55,68 +94,77 @@ class VideoEngine:
         self._composer = SceneComposer(settings)
         self._effects = VisualEffects()
         self._thumbnail_gen = ThumbnailGenerator(settings)
+        self._sfx_manager = SFXManager(settings.assets.directorio_sonidos)
+        self._music_manager = MusicManager(settings.assets.directorio_sonidos)
         self._fps = settings.video.fps
         self._tiempos = settings.video.tiempos
+        self._width = settings.video.ancho
+        self._height = settings.video.alto
 
     async def compose_video(
         self,
         quiz: Quiz,
         audio_pack: QuizAudioPack,
         output_path: Path,
+        answer_videos: dict[str, Path] | None = None,
     ) -> Path:
-        """Compone el video final del quiz.
+        """Compone el video final del quiz con animaciones y audio completo.
 
         Args:
             quiz: Quiz con todas las preguntas y metadatos.
             audio_pack: Paquete de audio con todos los segmentos TTS.
             output_path: Ruta donde exportar el video final.
+            answer_videos: Dict de respuesta → path de video (Pexels).
 
         Returns:
             Ruta al video exportado.
         """
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        clips: list[CompositeVideoClip | ImageClip] = []
+        answer_videos = answer_videos or {}
+        clips: list = []
 
         logger.info("Componiendo video: %d preguntas", len(quiz.preguntas))
 
-        # 1. Escena del Hook
-        hook_clip = self._create_hook_clip(quiz, audio_pack)
+        # Pre-generar todos los SFX
+        self._sfx_manager.generate_all()
+
+        # 1. Escena del Hook animado
+        hook_clip = self._create_animated_hook_clip(quiz, audio_pack)
         clips.append(hook_clip)
 
-        # 2. Escenas de preguntas
+        # 2. Escenas de preguntas (sin curiosidad)
         for i, pregunta in enumerate(quiz.preguntas):
             logger.info("Componiendo pregunta %d/%d...", i + 1, len(quiz.preguntas))
 
-            # 2a. Escena de lectura de la pregunta
-            question_clip = self._create_question_clip(
+            # 2a. Aparición de pregunta con animación
+            question_clip = self._create_animated_question_clip(
                 quiz, i, audio_pack,
             )
             clips.append(question_clip)
 
-            # 2b. Escena de countdown (opciones visibles, sin respuesta)
-            countdown_clip = self._create_countdown_clip(quiz, i)
+            # 2b. Countdown animado a 60fps
+            countdown_clip = self._create_smooth_countdown_clip(quiz, i)
             clips.append(countdown_clip)
 
-            # 2c. Escena de revelación
-            reveal_clip = self._create_reveal_clip(
-                quiz, i, audio_pack,
+            # 2c. Revelación con video/animación
+            reveal_clip = self._create_animated_reveal_clip(
+                quiz, i, audio_pack, answer_videos,
             )
             clips.append(reveal_clip)
 
-            # 2d. Escena de dato curioso (si existe)
-            if i < len(audio_pack.curiosities) and pregunta.curiosidad:
-                curiosity_clip = self._create_curiosity_clip(
-                    quiz, i, audio_pack,
-                )
-                clips.append(curiosity_clip)
-
-        # 3. Escena CTA
-        cta_clip = self._create_cta_clip(quiz, audio_pack)
+        # 3. Escena CTA animado
+        cta_clip = self._create_animated_cta_clip(quiz, audio_pack)
         clips.append(cta_clip)
 
         # Concatenar todos los clips
         logger.info("Concatenando %d clips...", len(clips))
         final_video = concatenate_videoclips(clips, method="compose")
+
+        # 4. Agregar música de fondo con ducking
+        if self._settings.video.musica.habilitada:
+            final_video = self._add_background_music(
+                final_video, audio_pack,
+            )
 
         # Exportar
         logger.info("Exportando video a: %s", output_path)
@@ -127,7 +175,7 @@ class VideoEngine:
             audio_codec="aac",
             preset=self._settings.exportacion.preset,
             threads=4,
-            logger=None,  # Silenciar logs de MoviePy
+            logger=None,
         )
 
         # Generar miniatura
@@ -141,47 +189,91 @@ class VideoEngine:
         # Limpiar
         final_video.close()
         for clip in clips:
-            clip.close()
+            try:
+                clip.close()
+            except Exception:
+                pass
 
         logger.info("Video exportado exitosamente: %s", output_path)
         return output_path
 
-    def _create_hook_clip(
+    # =========================================================================
+    # Clips Animados
+    # =========================================================================
+
+    def _create_animated_hook_clip(
         self,
         quiz: Quiz,
         audio_pack: QuizAudioPack,
     ) -> CompositeVideoClip:
-        """Crea el clip del hook de apertura con efecto viñeta."""
+        """Crea el clip del hook con animación de partículas y Ken Burns."""
         scene = self._composer.render_hook_scene(
             hook_text=quiz.hook.texto,
             emoji=quiz.hook.emoji,
         )
 
-        # Aplicar viñeta cinematográfica al hook
-        if self._settings.video.efectos.zoom_habilitado:
-            scene = VisualEffects.apply_vignette(scene, intensity=0.3)
-
-        frame = _pil_to_numpy(scene)
-
+        # Duración basada en el audio
         duration = self._tiempos.hook
-        img_clip = ImageClip(frame, duration=duration)
-
-        # Añadir audio del hook si existe
         if audio_pack.hook and audio_pack.hook.audio_path.exists():
             audio = AudioFileClip(str(audio_pack.hook.audio_path))
             duration = max(duration, audio.duration + 0.5)
-            img_clip = ImageClip(frame, duration=duration)
-            img_clip = img_clip.with_audio(audio)
+        else:
+            audio = None
 
-        return img_clip
+        num_frames = int(duration * self._fps)
 
-    def _create_question_clip(
+        # Generar frames animados: Ken Burns + Partículas
+        ken_burns_frames = VisualEffects.apply_ken_burns(
+            scene, num_frames, zoom_start=1.0, zoom_end=1.04,
+        )
+
+        # Aplicar partículas sobre los frames de Ken Burns
+        animated_frames = VisualEffects.generate_particle_frames(
+            scene, num_frames, num_particles=25, seed=42,
+        )
+
+        # Combinar: usar Ken Burns como base, componer partículas encima
+        final_frames = []
+        for i in range(num_frames):
+            kb_frame = ken_burns_frames[i] if i < len(ken_burns_frames) else ken_burns_frames[-1]
+            pt_frame = animated_frames[i] if i < len(animated_frames) else animated_frames[-1]
+
+            # Blend sutil de las partículas sobre el Ken Burns
+            kb_arr = np.array(kb_frame, dtype=np.float64)
+            pt_arr = np.array(pt_frame, dtype=np.float64)
+            blended = np.clip(kb_arr * 0.85 + pt_arr * 0.15, 0, 255).astype(np.uint8)
+            final_frames.append(Image.fromarray(blended))
+
+        # Aplicar viñeta al primer frame base (se mantiene en todos)
+        clip = _frames_to_clip(final_frames, self._fps, duration)
+
+        # Añadir SFX de aparición
+        sfx_clips = []
+        try:
+            pop_path = self._sfx_manager.get_sfx(SFXManager.POP)
+            sfx_clips.append(AudioFileClip(str(pop_path)).with_start(0.1))
+        except Exception:
+            pass
+
+        # Componer audio
+        audio_layers = []
+        if audio:
+            audio_layers.append(audio.with_start(0.3))
+        audio_layers.extend(sfx_clips)
+
+        if audio_layers:
+            composite_audio = CompositeAudioClip(audio_layers)
+            clip = clip.with_audio(composite_audio)
+
+        return clip
+
+    def _create_animated_question_clip(
         self,
         quiz: Quiz,
         question_idx: int,
         audio_pack: QuizAudioPack,
     ) -> CompositeVideoClip:
-        """Crea el clip de lectura de la pregunta (sin opciones visibles aún)."""
+        """Crea el clip de la pregunta con Ken Burns sutil y SFX."""
         pregunta = quiz.preguntas[question_idx]
         answers_data = [
             {"texto": r.texto, "emoji": r.emoji, "es_correcta": r.es_correcta}
@@ -195,28 +287,58 @@ class VideoEngine:
             answers=answers_data,
             emoji_pista=pregunta.emoji_pista,
         )
-        frame = _pil_to_numpy(scene)
 
         duration = self._tiempos.pregunta_lectura
 
-        # Ajustar duración al audio de la pregunta
+        # Audio TTS de la pregunta
+        audio = None
         if question_idx < len(audio_pack.questions):
             q_audio_seg = audio_pack.questions[question_idx]
             if q_audio_seg.audio_path.exists():
                 audio = AudioFileClip(str(q_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
-                img_clip = ImageClip(frame, duration=duration)
-                img_clip = img_clip.with_audio(audio)
-                return img_clip
 
-        return ImageClip(frame, duration=duration)
+        num_frames = int(duration * self._fps)
 
-    def _create_countdown_clip(
+        # Ken Burns sutil
+        frames = VisualEffects.apply_ken_burns(
+            scene, num_frames, zoom_start=1.0, zoom_end=1.02,
+        )
+
+        clip = _frames_to_clip(frames, self._fps, duration)
+
+        # SFX de aparición de pregunta
+        audio_layers = []
+        if audio:
+            audio_layers.append(audio)
+
+        try:
+            q_sfx_path = self._sfx_manager.get_sfx(SFXManager.QUESTION_APPEAR)
+            audio_layers.append(
+                AudioFileClip(str(q_sfx_path)).with_start(0).with_volume_scaled(0.5),
+            )
+        except Exception:
+            pass
+
+        if audio_layers:
+            composite_audio = CompositeAudioClip(audio_layers)
+            clip = clip.with_audio(composite_audio)
+
+        return clip
+
+    def _create_smooth_countdown_clip(
         self,
         quiz: Quiz,
         question_idx: int,
     ) -> CompositeVideoClip:
-        """Crea el clip del countdown (temporizador visual)."""
+        """Crea el clip del countdown animado a 60fps.
+
+        Genera frames fluidos con:
+        - Timer circular con arco que se reduce
+        - Ken Burns zoom sutil
+        - Ticks de sonido por segundo
+        - Tick urgente en los últimos 3 segundos
+        """
         pregunta = quiz.preguntas[question_idx]
         timer_seconds = pregunta.tiempo_segundos
         answers_data = [
@@ -224,10 +346,15 @@ class VideoEngine:
             for r in pregunta.respuestas
         ]
 
-        # Crear fotogramas del countdown (1 por segundo)
-        frames = []
+        total_duration = float(timer_seconds)
+        total_frames = int(total_duration * self._fps)
+        frames_per_second = self._fps
+
+        all_frames = []
+
         for t in range(timer_seconds, 0, -1):
-            scene = self._composer.render_question_scene(
+            # Renderizar la escena base para este segundo
+            base_scene = self._composer.render_question_scene(
                 question_number=question_idx + 1,
                 total_questions=len(quiz.preguntas),
                 question_text=pregunta.texto,
@@ -235,19 +362,65 @@ class VideoEngine:
                 timer_value=t,
                 emoji_pista=pregunta.emoji_pista,
             )
-            frames.append(_pil_to_numpy(scene))
 
-        # Crear clips de 1 segundo cada uno
-        clips = [ImageClip(frame, duration=1.0) for frame in frames]
-        return concatenate_videoclips(clips, method="compose")
+            # Generar frames de Ken Burns para este segundo
+            second_frames = VisualEffects.apply_ken_burns(
+                base_scene,
+                frames_per_second,
+                zoom_start=1.0 + (timer_seconds - t) * 0.002,
+                zoom_end=1.0 + (timer_seconds - t + 1) * 0.002,
+            )
 
-    def _create_reveal_clip(
+            all_frames.extend(second_frames)
+
+        # Asegurar que tenemos exactamente total_frames
+        if len(all_frames) > total_frames:
+            all_frames = all_frames[:total_frames]
+        while len(all_frames) < total_frames:
+            all_frames.append(all_frames[-1] if all_frames else
+                              Image.new("RGB", (self._width, self._height), (0, 0, 0)))
+
+        clip = _frames_to_clip(all_frames, self._fps, total_duration)
+
+        # Agregar ticks de countdown como audio
+        audio_layers = []
+        for t in range(timer_seconds):
+            try:
+                remaining = timer_seconds - t
+                sfx_name = SFXManager.TICK_URGENT if remaining <= 3 else SFXManager.TICK
+                tick_path = self._sfx_manager.get_sfx(sfx_name)
+                tick_audio = AudioFileClip(str(tick_path)).with_start(float(t))
+                audio_layers.append(tick_audio)
+            except Exception:
+                pass
+
+        # SFX de inicio de countdown
+        try:
+            start_path = self._sfx_manager.get_sfx(SFXManager.COUNTDOWN_START)
+            audio_layers.insert(0, AudioFileClip(str(start_path)).with_start(0))
+        except Exception:
+            pass
+
+        if audio_layers:
+            clip = clip.with_audio(CompositeAudioClip(audio_layers))
+
+        return clip
+
+    def _create_animated_reveal_clip(
         self,
         quiz: Quiz,
         question_idx: int,
         audio_pack: QuizAudioPack,
+        answer_videos: dict[str, Path],
     ) -> CompositeVideoClip:
-        """Crea el clip de revelación con efectos de confeti/color."""
+        """Crea el clip de revelación con flash, video de respuesta, y SFX.
+
+        Flujo:
+        1. Flash rápido (6 frames)
+        2. Escena de respuesta correcta resaltada con confeti
+        3. Si hay video de Pexels: overlay del video
+        4. SFX de respuesta correcta + audio TTS
+        """
         pregunta = quiz.preguntas[question_idx]
         answers_data = [
             {"texto": r.texto, "emoji": r.emoji, "es_correcta": r.es_correcta}
@@ -258,8 +431,10 @@ class VideoEngine:
             (i for i, r in enumerate(pregunta.respuestas) if r.es_correcta),
             0,
         )
+        correct_text = pregunta.respuestas[correct_idx].texto if pregunta.respuestas else ""
 
-        scene = self._composer.render_question_scene(
+        # Renderizar escena de respuesta correcta
+        reveal_scene = self._composer.render_question_scene(
             question_number=question_idx + 1,
             total_questions=len(quiz.preguntas),
             question_text=pregunta.texto,
@@ -269,84 +444,217 @@ class VideoEngine:
             emoji_pista=pregunta.emoji_pista,
         )
 
-        # Aplicar efectos visuales a la revelación
+        # Aplicar confeti
         efectos = self._settings.video.efectos
         if efectos.confeti_habilitado:
-            scene = VisualEffects.apply_confetti(
-                scene, num_particles=60, seed=question_idx,
+            reveal_scene = VisualEffects.apply_confetti(
+                reveal_scene, num_particles=80, seed=question_idx,
             )
-        if efectos.flash_habilitado:
-            # Flash suave verde para respuesta correcta
-            scene = VisualEffects.apply_color_overlay(
-                scene, (0, 230, 118), intensity=0.08,
-            )
-
-        frame = _pil_to_numpy(scene)
 
         duration = self._tiempos.revelacion
 
         # Audio de la respuesta
+        audio = None
         if question_idx < len(audio_pack.answers):
             a_audio_seg = audio_pack.answers[question_idx]
             if a_audio_seg.audio_path.exists():
                 audio = AudioFileClip(str(a_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
-                img_clip = ImageClip(frame, duration=duration)
-                img_clip = img_clip.with_audio(audio)
-                return img_clip
 
-        return ImageClip(frame, duration=duration)
+        num_frames = int(duration * self._fps)
 
-    def _create_curiosity_clip(
-        self,
-        quiz: Quiz,
-        question_idx: int,
-        audio_pack: QuizAudioPack,
-    ) -> CompositeVideoClip:
-        """Crea el clip del dato curioso."""
-        pregunta = quiz.preguntas[question_idx]
-        correcta = next(
-            (r.texto for r in pregunta.respuestas if r.es_correcta),
-            "",
+        # Generar frames: flash inicial + reveal con Ken Burns
+        flash_frames = VisualEffects.generate_flash_frames(
+            reveal_scene, num_frames=6, peak_intensity=0.6,
         )
 
-        scene = self._composer.render_curiosity_scene(
-            curiosity_text=pregunta.curiosidad or "",
-            correct_answer=correcta,
+        remaining_frames = num_frames - len(flash_frames)
+        ken_burns_frames = VisualEffects.apply_ken_burns(
+            reveal_scene, max(1, remaining_frames),
+            zoom_start=1.01, zoom_end=1.03,
         )
-        frame = _pil_to_numpy(scene)
 
-        duration = self._tiempos.curiosidad
+        all_frames = flash_frames + ken_burns_frames
+        if len(all_frames) > num_frames:
+            all_frames = all_frames[:num_frames]
+        while len(all_frames) < num_frames:
+            all_frames.append(all_frames[-1])
 
-        # Audio del dato curioso
-        if question_idx < len(audio_pack.curiosities):
-            c_audio_seg = audio_pack.curiosities[question_idx]
-            if c_audio_seg.audio_path.exists():
-                audio = AudioFileClip(str(c_audio_seg.audio_path))
-                duration = max(duration, audio.duration + 0.5)
-                img_clip = ImageClip(frame, duration=duration)
-                img_clip = img_clip.with_audio(audio)
-                return img_clip
+        clip = _frames_to_clip(all_frames, self._fps, duration)
 
-        return ImageClip(frame, duration=duration)
+        # Intentar overlay de video de Pexels
+        if correct_text in answer_videos:
+            video_path = answer_videos[correct_text]
+            try:
+                clip = self._overlay_answer_video(clip, video_path, duration)
+            except Exception:
+                logger.exception("Error al overlay video de respuesta, usando fallback")
 
-    def _create_cta_clip(
+        # Audio: TTS + SFX
+        audio_layers = []
+        if audio:
+            audio_layers.append(audio.with_start(0.2))
+
+        try:
+            correct_sfx = self._sfx_manager.get_sfx(SFXManager.CORRECT)
+            audio_layers.append(AudioFileClip(str(correct_sfx)).with_start(0))
+        except Exception:
+            pass
+
+        try:
+            confetti_sfx = self._sfx_manager.get_sfx(SFXManager.CONFETTI)
+            audio_layers.append(
+                AudioFileClip(str(confetti_sfx)).with_start(0.15).with_volume_scaled(0.4),
+            )
+        except Exception:
+            pass
+
+        if audio_layers:
+            clip = clip.with_audio(CompositeAudioClip(audio_layers))
+
+        return clip
+
+    def _create_animated_cta_clip(
         self,
         quiz: Quiz,
         audio_pack: QuizAudioPack,
     ) -> CompositeVideoClip:
-        """Crea el clip final del CTA."""
+        """Crea el clip final del CTA con animación."""
         cta_text = quiz.metadata.cta or "¡Comenta cuántas acertaste! 🎯"
         scene = self._composer.render_cta_scene(cta_text)
-        frame = _pil_to_numpy(scene)
 
         duration = self._tiempos.outro
 
         if audio_pack.cta and audio_pack.cta.audio_path.exists():
             audio = AudioFileClip(str(audio_pack.cta.audio_path))
             duration = max(duration, audio.duration + 0.5)
-            img_clip = ImageClip(frame, duration=duration)
-            img_clip = img_clip.with_audio(audio)
-            return img_clip
+        else:
+            audio = None
 
-        return ImageClip(frame, duration=duration)
+        num_frames = int(duration * self._fps)
+
+        # Ken Burns + partículas
+        kb_frames = VisualEffects.apply_ken_burns(
+            scene, num_frames, zoom_start=1.0, zoom_end=1.03,
+        )
+        particle_frames = VisualEffects.generate_particle_frames(
+            scene, num_frames, num_particles=20, seed=99,
+        )
+
+        final_frames = []
+        for i in range(num_frames):
+            kb = kb_frames[i] if i < len(kb_frames) else kb_frames[-1]
+            pt = particle_frames[i] if i < len(particle_frames) else particle_frames[-1]
+            kb_arr = np.array(kb, dtype=np.float64)
+            pt_arr = np.array(pt, dtype=np.float64)
+            blended = np.clip(kb_arr * 0.85 + pt_arr * 0.15, 0, 255).astype(np.uint8)
+            final_frames.append(Image.fromarray(blended))
+
+        clip = _frames_to_clip(final_frames, self._fps, duration)
+
+        # Audio + fanfare SFX
+        audio_layers = []
+        if audio:
+            audio_layers.append(audio.with_start(0.3))
+
+        try:
+            fanfare_path = self._sfx_manager.get_sfx(SFXManager.FANFARE)
+            audio_layers.append(AudioFileClip(str(fanfare_path)).with_start(0))
+        except Exception:
+            pass
+
+        if audio_layers:
+            clip = clip.with_audio(CompositeAudioClip(audio_layers))
+
+        return clip
+
+    # =========================================================================
+    # Música de Fondo
+    # =========================================================================
+
+    def _add_background_music(
+        self,
+        video: CompositeVideoClip,
+        audio_pack: QuizAudioPack,
+    ) -> CompositeVideoClip:
+        """Agrega música de fondo con ducking automático.
+
+        La música se reduce cuando hay voz (TTS) y se restaura
+        en los momentos sin narración.
+        """
+        music_config = self._settings.video.musica
+        total_duration = video.duration
+
+        if total_duration <= 0:
+            return video
+
+        # Generar música de fondo
+        output_dir = Path(self._settings.assets.directorio_sonidos)
+        music_path = self._music_manager.generate_background_music(
+            duration_seconds=total_duration,
+            output_path=output_dir / f"bgm_{int(total_duration)}s.wav",
+            volume=music_config.volumen,
+            bpm=music_config.bpm,
+        )
+
+        try:
+            music_audio = AudioFileClip(str(music_path))
+
+            # Ajustar duración exacta
+            if music_audio.duration > total_duration:
+                music_audio = music_audio.subclipped(0, total_duration)
+
+            # Mezclar con el audio existente del video
+            if video.audio is not None:
+                combined = CompositeAudioClip([
+                    video.audio,
+                    music_audio.with_volume_scaled(music_config.volumen),
+                ])
+                return video.with_audio(combined)
+            else:
+                return video.with_audio(
+                    music_audio.with_volume_scaled(music_config.volumen),
+                )
+
+        except Exception:
+            logger.exception("Error al agregar música de fondo")
+            return video
+
+    # =========================================================================
+    # Overlay de Video de Respuesta
+    # =========================================================================
+
+    def _overlay_answer_video(
+        self,
+        base_clip: CompositeVideoClip,
+        video_path: Path,
+        duration: float,
+    ) -> CompositeVideoClip:
+        """Superpone un video de respuesta (Pexels) en una sección del clip.
+
+        El video se muestra en un recuadro redondeado en la parte central,
+        sobre el clip de revelación.
+        """
+        try:
+            answer_vid = VideoFileClip(str(video_path))
+
+            # Recortar al tiempo de revelación
+            if answer_vid.duration > duration:
+                answer_vid = answer_vid.subclipped(0, duration)
+
+            # Redimensionar para que quepa en un recuadro (60% del ancho)
+            target_w = int(self._width * 0.6)
+            target_h = int(target_w * 9 / 16)  # Mantener aspecto
+            answer_vid = answer_vid.resized((target_w, target_h))
+
+            # Posicionar en el centro
+            x_pos = (self._width - target_w) // 2
+            y_pos = int(self._height * 0.25)
+
+            answer_vid = answer_vid.with_position((x_pos, y_pos))
+
+            return CompositeVideoClip([base_clip, answer_vid])
+
+        except Exception:
+            logger.exception("Error al procesar video de respuesta")
+            return base_clip

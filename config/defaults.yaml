@@ -86,11 +86,24 @@ video:
     hook: 3.0
     pregunta_lectura: 2.0         # Tiempo para leer la pregunta antes del timer
     tiempo_por_pregunta: 10       # Cuenta regresiva por pregunta
-    revelacion: 2.5               # Tiempo mostrando la respuesta correcta
-    curiosidad: 3.0               # Tiempo mostrando dato curioso
+    revelacion: 2.0               # Tiempo mostrando la respuesta correcta
     transicion: 0.5               # Duración de transiciones
     outro: 3.0                    # CTA final
-    pausa_entre_preguntas: 0.3    # Pausa mínima entre preguntas
+    pausa_entre_preguntas: 0.2    # Pausa mínima entre preguntas
+
+  # Música de fondo
+  musica:
+    habilitada: true
+    volumen: 0.15                 # Volumen relativo a la voz (0.0 - 1.0)
+    bpm: 125                     # Tempo en BPM
+    ducking_nivel: 0.3            # Nivel de reducción cuando hay voz
+    ducking_attack: 0.1           # Tiempo de fade-in del ducking
+    ducking_release: 0.3          # Tiempo de fade-out del ducking
+
+  # Efectos de sonido
+  sfx:
+    habilitados: true
+    volumen: 0.6                  # Volumen de los SFX (0.0 - 1.0)
 
   # Efectos
   efectos:
