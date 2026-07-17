@@ -90,19 +90,37 @@ class GenerationPipeline:
             plugin = self._registry.get(request.tipo)
             logger.info("Plugin resuelto: %s", plugin.name)
 
-            # Paso 2: Generar quiz con IA
-            self._report_progress(
-                PipelineStep.GENERAR_QUIZ, 0.1,
-                "Generando quiz con IA...",
-            )
-            quiz = await self._generate_quiz(request, plugin)
+            # Pasos 2 y 3: Generar quiz y verificar duplicados con reintentos
+            max_retries = 3
+            quiz = None
+            for attempt in range(1, max_retries + 1):
+                try:
+                    self._report_progress(
+                        PipelineStep.GENERAR_QUIZ, 0.1,
+                        f"Generando quiz con IA (Intento {attempt}/{max_retries})...",
+                    )
+                    quiz = await self._generate_quiz(request, plugin)
 
-            # Paso 3: Verificar duplicados
-            self._report_progress(
-                PipelineStep.VERIFICAR_DUPLICADOS, 0.3,
-                "Verificando duplicados...",
-            )
-            await self._check_duplicates(quiz)
+                    self._report_progress(
+                        PipelineStep.VERIFICAR_DUPLICADOS, 0.3,
+                        "Verificando duplicados...",
+                    )
+                    await self._check_duplicates(quiz)
+                    
+                    # Si llega aquí, no hubo duplicados
+                    break
+                except DuplicateContentError as e:
+                    logger.warning("Contenido duplicado detectado en intento %d: %s", attempt, e)
+                    if attempt == max_retries:
+                        raise PipelineError(
+                            PipelineStep.VERIFICAR_DUPLICADOS.value,
+                            f"No se pudo generar contenido único tras {max_retries} intentos. "
+                            f"Detalle: {e}",
+                        ) from e
+                    # Agregar un pequeño log de reintento
+                    logger.info("Reintentando generación con IA para evitar repetición...")
+
+            assert quiz is not None, "El quiz no pudo ser generado"
 
             # Paso 4: Validar quiz
             validation_errors = plugin.validate_quiz(quiz)
