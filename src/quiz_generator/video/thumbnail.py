@@ -10,7 +10,7 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from quiz_generator.config import Settings
 from quiz_generator.core.models import Quiz, ThumbnailSpec
@@ -23,7 +23,7 @@ _FALLBACK_FONT = "arial.ttf"
 class ThumbnailGenerator:
     """Generador de miniaturas para videos de quiz.
 
-    Crea imágenes 1080×1920 (vertical) o 1280×720 (horizontal) con
+    Crea imágenes 1080x1920 (vertical) o 1280x720 (horizontal) con
     estilo clickbait viral: texto grande, colores vibrantes, emojis
     y efectos de sombra/outline.
     """

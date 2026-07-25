@@ -14,7 +14,6 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from quiz_generator.core.enums import Difficulty, QuizType
     from quiz_generator.core.models import (
-        GenerationRequest,
         Quiz,
         QuizMetadata,
     )

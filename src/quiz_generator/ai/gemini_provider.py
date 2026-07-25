@@ -123,13 +123,13 @@ class GeminiProvider(IAIProvider):
             "gemini-2.0-flash",
             "gemini-1.5-flash",
         ]
-        
+
         # Eliminar duplicados manteniendo el orden
         seen = set()
         models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
 
         last_error = None
-        
+
         for current_model in models_to_try:
             try:
                 response = self._client.models.generate_content(
@@ -157,15 +157,15 @@ class GeminiProvider(IAIProvider):
             except Exception as e:
                 error_str = str(e).lower()
                 last_error = e
-                
+
                 # Si es un error de Rate Limit, lanzarlo para que Tenacity reintente
                 if "rate" in error_str or "quota" in error_str or "429" in error_str:
                     raise AIRateLimitError("Gemini") from e
-                
+
                 # Error fatal de API Key
                 if "api key" in error_str or "401" in error_str or "403" in error_str:
                     raise MissingAPIKeyError("Gemini", "GEMINI_API_KEY") from e
-                    
+
                 # Si el modelo no existe o falla, intentar con el siguiente
                 logger.warning("El modelo '%s' falló o no está disponible. Intentando con el siguiente... (Error: %s)", current_model, e)
                 continue
@@ -180,7 +180,7 @@ class GeminiProvider(IAIProvider):
         if clean.startswith("```"):
             lines = clean.split("\n")
             # Remover primera y última línea (```json y ```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             clean = "\n".join(lines)
 
         try:

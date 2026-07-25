@@ -116,7 +116,6 @@ class AntiRepetitionEngine(IAntiRepetitionEngine):
     ) -> bool:
         """Verifica si un texto es demasiado similar a uno ya registrado."""
         self._ensure_loaded()
-        import faiss
 
         if self._index is None or self._index.ntotal == 0:
             return False

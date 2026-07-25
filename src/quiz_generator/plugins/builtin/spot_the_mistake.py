@@ -47,7 +47,7 @@ class SpotTheMistakePlugin(BaseQuizPlugin):
      Error: es Canberra.
   3. Ciencia: "El agua hierve a 50°C al nivel del mar"
      Error: hierve a 100°C.
-  4. Matemáticas: "12 × 8 = 94"
+  4. Matemáticas: "12 x 8 = 94"
      Error: es 96.
   5. Ortografía: "La palabra 'excelente' se escribe con S: 'exselente'"
   6. Cultura pop: "Iron Man es interpretado por Chris Hemsworth"

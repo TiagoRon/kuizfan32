@@ -11,10 +11,8 @@ from __future__ import annotations
 
 import logging
 import re
-import struct
 import unicodedata
 from pathlib import Path
-from typing import Any
 
 from PIL import ImageFont
 

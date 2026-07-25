@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import math
 import random
-from typing import Any
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
@@ -39,7 +38,7 @@ class VisualEffects:
     ) -> Image.Image:
         """Aplica un efecto de confeti sobre la imagen."""
         result = img.copy()
-        draw = ImageDraw.Draw(result)
+        ImageDraw.Draw(result)
         rng = random.Random(seed)
 
         width, height = img.size
@@ -213,19 +212,19 @@ class VisualEffects:
 
     # =========================================================================
     # Efectos Animados Eager (Generan listas de imágenes)
-    # NOTA: Mantener por compatibilidad, pero preferir las versiones "lazy" 
+    # NOTA: Mantener por compatibilidad, pero preferir las versiones "lazy"
     #       para la composición de video.
     # =========================================================================
 
     @staticmethod
     def create_particles(
-        width: int, 
-        height: int, 
-        num_particles: int = 30, 
+        width: int,
+        height: int,
+        num_particles: int = 30,
         seed: int = 0,
     ) -> list[dict]:
         """Crea la definición matemática de las partículas flotantes.
-        
+
         Útil para evaluación lazy (sin estado).
         """
         rng = random.Random(seed)
@@ -259,7 +258,7 @@ class VisualEffects:
         particles: list[dict],
     ) -> Image.Image:
         """Aplica partículas sobre un único frame en el instante t.
-        
+
         Evaluación lazy matemática, no requiere estado previo.
         """
         width, height = base_img.size
@@ -271,7 +270,7 @@ class VisualEffects:
             # Calcular posición en el tiempo t
             raw_y = p["start_y"] + p["speed_y"] * t
             raw_x = p["start_x"] + p["speed_x"] * t + p["wobble_amp"] * math.sin(t * p["wobble_freq"] + p["phase"])
-            
+
             # Wrap around (toroide)
             y = raw_y % (height + 40) - 20
             x = raw_x % (width + 40) - 20
@@ -300,7 +299,7 @@ class VisualEffects:
         zoom_end: float = 1.03,
     ) -> Image.Image:
         """Aplica Ken Burns zoom sobre un único frame en el instante t.
-        
+
         Usa interpolación BILINEAR que es suficientemente rápida para
         ejecución real-time durante la composición de MoviePy.
         """
@@ -502,10 +501,9 @@ class VisualEffects:
                 text_h = bbox[3] - bbox[1]
 
                 # Pulsar el número en los últimos 3 segundos
-                scale = 1.0
                 if timer_value <= 3:
                     pulse = math.sin(progress_in_second * math.pi) * 0.15
-                    scale = 1.0 + pulse
+                    1.0 + pulse
 
                 draw.text(
                     (center_x - text_w // 2, center_y - text_h // 2 - 3),

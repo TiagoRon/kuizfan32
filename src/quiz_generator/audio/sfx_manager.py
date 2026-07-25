@@ -15,7 +15,7 @@ Los SFX se generan una vez y se cachean en assets/sounds/.
 from __future__ import annotations
 
 import logging
-import struct
+import typing
 import wave
 from pathlib import Path
 
@@ -226,7 +226,7 @@ class SFXManager:
         """Pop de aparición — clic corto con resonancia."""
         duration = 0.06
         n_samples = int(SAMPLE_RATE * duration)
-        t = np.linspace(0, duration, n_samples, endpoint=False)
+        np.linspace(0, duration, n_samples, endpoint=False)
 
         # Tono con pitch descendente rápido
         freq_start = 1500.0
@@ -241,7 +241,6 @@ class SFXManager:
 
     def _generate_question_appear(self, path: Path) -> None:
         """Sonido sutil de aparición de pregunta."""
-        duration = 0.2
         # Dos notas rápidas ascendentes
         note1 = _sine_wave(600, 0.08, 0.3)
         note1 += _sine_wave(1200, 0.08, 0.1)
@@ -321,7 +320,7 @@ class SFXManager:
         n_samples = int(SAMPLE_RATE * duration)
 
         # Sweep descendente suave
-        t = np.linspace(0, duration, n_samples, endpoint=False)
+        np.linspace(0, duration, n_samples, endpoint=False)
         freq_start = 800.0
         freq_end = 300.0
         freqs = np.linspace(freq_start, freq_end, n_samples)
@@ -336,7 +335,7 @@ class SFXManager:
         _save_wav(wave_data * env, path)
 
     # Mapeo de nombre → generador
-    _generators: dict[str, any] = {
+    _generators: typing.ClassVar[dict[str, typing.Any]] = {
         TICK: _generate_tick,
         TICK_URGENT: _generate_tick_urgent,
         CORRECT: _generate_correct,

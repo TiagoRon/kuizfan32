@@ -21,6 +21,7 @@ NO incluye pantalla de "¿Sabías que...?" — flujo directo.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 from pathlib import Path
 
@@ -29,10 +30,8 @@ from moviepy import (
     AudioFileClip,
     CompositeAudioClip,
     CompositeVideoClip,
-    ImageClip,
     VideoClip,
     VideoFileClip,
-    concatenate_audioclips,
     concatenate_videoclips,
 )
 from PIL import Image, ImageDraw
@@ -110,7 +109,7 @@ class VideoEngine:
         clips.append(hook_clip)
 
         # 2. Escenas de preguntas (sin curiosidad)
-        for i, pregunta in enumerate(quiz.preguntas):
+        for i, _pregunta in enumerate(quiz.preguntas):
             logger.info("Componiendo pregunta %d/%d...", i + 1, len(quiz.preguntas))
 
             # 2a. Aparición de pregunta con animación
@@ -166,10 +165,8 @@ class VideoEngine:
         # Limpiar
         final_video.close()
         for clip in clips:
-            try:
+            with contextlib.suppress(Exception):
                 clip.close()
-            except Exception:
-                pass
 
         logger.info("Video exportado exitosamente: %s", output_path)
         return output_path
@@ -197,7 +194,7 @@ class VideoEngine:
         else:
             audio = None
 
-        num_frames = int(duration * self._fps)
+        int(duration * self._fps)
         particles = VisualEffects.create_particles(self._width, self._height, num_particles=25, seed=42)
 
         def make_frame(t: float) -> np.ndarray:
@@ -323,13 +320,13 @@ class VideoEngine:
 
         def make_frame(t: float) -> np.ndarray:
             time_left = max(0.001, timer_seconds - t)
-            
+
             # Dibujar el timer actual sobre una copia de la base
             frame_with_timer = base_scene.copy()
             draw = ImageDraw.Draw(frame_with_timer)
             # Y fijo para el timer (se calcula igual que en composer.py)
             self._composer._draw_premium_timer(draw, time_left, y=410)
-            
+
             # Ken Burns sutil continuo a lo largo de todo el countdown
             final_frame = VisualEffects.apply_ken_burns_lazy(
                 frame_with_timer, t, total_duration,

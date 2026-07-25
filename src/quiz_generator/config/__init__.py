@@ -327,7 +327,7 @@ def get_settings() -> Settings:
     En la primera llamada carga desde los archivos YAML.
     Las llamadas subsiguientes retornan la misma instancia.
     """
-    global _settings  # noqa: PLW0603
+    global _settings
     if _settings is None:
         _settings = load_settings()
     return _settings
@@ -335,5 +335,5 @@ def get_settings() -> Settings:
 
 def reset_settings() -> None:
     """Resetea el singleton de configuración (útil para tests)."""
-    global _settings  # noqa: PLW0603
+    global _settings
     _settings = None

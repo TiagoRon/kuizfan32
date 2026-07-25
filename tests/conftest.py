@@ -8,13 +8,11 @@ from quiz_generator.config import Settings, reset_settings
 from quiz_generator.core.enums import Difficulty, QuizType, ViralTrigger
 from quiz_generator.core.models import (
     Answer,
-    AudioSpec,
     GenerationRequest,
     Hook,
     Question,
     Quiz,
     QuizMetadata,
-    VideoSpec,
 )
 from quiz_generator.plugins.registry import PluginRegistry
 

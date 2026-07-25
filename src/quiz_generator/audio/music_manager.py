@@ -295,10 +295,7 @@ class MusicManager:
         import wave
 
         peak = np.max(np.abs(data))
-        if peak > 0:
-            normalized = data / peak * 0.85
-        else:
-            normalized = data
+        normalized = data / peak * 0.85 if peak > 0 else data
 
         samples = (normalized * 32767).astype(np.int16)
 

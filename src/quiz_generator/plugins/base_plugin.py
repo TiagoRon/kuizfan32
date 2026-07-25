@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from quiz_generator.core.enums import Difficulty, QuizType
+from quiz_generator.core.enums import QuizType
 from quiz_generator.core.models import Quiz
 
 

@@ -25,7 +25,7 @@ from quiz_generator.config import Settings, get_settings
 from quiz_generator.core.enums import Difficulty, PipelineStep, QuizType
 from quiz_generator.core.exceptions import DuplicateContentError, PipelineError
 from quiz_generator.core.models import GenerationRequest, GenerationResult, Quiz
-from quiz_generator.plugins.registry import PluginRegistry, discover_and_register_builtin_plugins
+from quiz_generator.plugins.registry import discover_and_register_builtin_plugins
 from quiz_generator.video.engine import VideoEngine
 from quiz_generator.video.video_fetcher import VideoFetcher
 
@@ -106,7 +106,7 @@ class GenerationPipeline:
                         "Verificando duplicados...",
                     )
                     await self._check_duplicates(quiz)
-                    
+
                     # Si llega aquí, no hubo duplicados
                     break
                 except DuplicateContentError as e:

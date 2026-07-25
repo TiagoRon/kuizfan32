@@ -1,6 +1,6 @@
 """Tests unitarios para el sistema de plugins."""
 
-from quiz_generator.core.enums import Difficulty, QuizType
+from quiz_generator.core.enums import QuizType
 from quiz_generator.core.models import Quiz
 from quiz_generator.plugins.base_plugin import BaseQuizPlugin
 from quiz_generator.plugins.registry import PluginRegistry, discover_and_register_builtin_plugins
@@ -69,6 +69,7 @@ class TestPluginRegistry:
         """Lanza error al buscar un plugin no registrado."""
         registry = PluginRegistry()
         import pytest
+
         from quiz_generator.core.exceptions import PluginNotFoundError
 
         with pytest.raises(PluginNotFoundError):
@@ -87,8 +88,8 @@ class TestBaseQuizPlugin:
 
     def test_validate_quiz_no_questions(self):
         """Detecta quiz sin preguntas."""
-        from quiz_generator.core.models import Hook, QuizMetadata
         from quiz_generator.core.enums import ViralTrigger
+        from quiz_generator.core.models import Hook, QuizMetadata
 
         empty_quiz = Quiz(
             tipo=QuizType.TRIVIA,

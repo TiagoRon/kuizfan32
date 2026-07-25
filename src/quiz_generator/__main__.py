@@ -20,7 +20,7 @@ from rich.progress import Progress, SpinnerColumn, TextColumn
 from rich.table import Table
 
 from quiz_generator import __app_name__, __version__
-from quiz_generator.core.enums import Difficulty, PipelineStep, QuizType
+from quiz_generator.core.enums import Difficulty, QuizType
 from quiz_generator.plugins.registry import discover_and_register_builtin_plugins
 
 console = Console()
@@ -188,7 +188,7 @@ def config() -> None:
         f"[bold]Configuración Actual[/]\n\n"
         f"🤖 IA: {settings.ia.proveedor} ({settings.ia.modelo})\n"
         f"🗣️  TTS: {settings.tts.proveedor} ({settings.tts.voz})\n"
-        f"📐 Video: {settings.video.ancho}×{settings.video.alto} @ {settings.video.fps}fps\n"
+        f"📐 Video: {settings.video.ancho}x{settings.video.alto} @ {settings.video.fps}fps\n"
         f"🌍 Idioma: {settings.general.idioma}\n"
         f"📊 Dificultad: {settings.general.dificultad_default}\n"
         f"🔄 Anti-Repetición: {'✅' if settings.anti_repeticion.habilitado else '❌'}\n"

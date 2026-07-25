@@ -5,10 +5,8 @@ from quiz_generator.core.models import (
     Answer,
     AudioSpec,
     GenerationRequest,
-    Hook,
     Question,
     Quiz,
-    QuizMetadata,
     VideoSpec,
 )
 
@@ -37,8 +35,9 @@ class TestModels:
         """Las respuestas son inmutables (frozen)."""
         answer = Answer(texto="Test", es_correcta=True)
         import pytest
+        from pydantic import ValidationError
 
-        with pytest.raises(Exception):  # Pydantic ValidationError
+        with pytest.raises(ValidationError):  # Pydantic ValidationError
             answer.texto = "Modified"  # type: ignore
 
     def test_question_defaults(self):

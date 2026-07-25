@@ -8,7 +8,6 @@ comentarios por la tensión de los escenarios.
 from typing import Any
 
 from quiz_generator.core.enums import QuizType
-from quiz_generator.core.models import Quiz
 from quiz_generator.plugins.base_plugin import BaseQuizPlugin
 from quiz_generator.plugins.registry import PluginRegistry
 

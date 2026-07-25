@@ -19,10 +19,9 @@ from __future__ import annotations
 
 import logging
 import math
-from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 from quiz_generator.config import Settings
 from quiz_generator.video.font_manager import FontManager
@@ -174,10 +173,7 @@ class SceneComposer:
         Returns:
             La coordenada Y final (después del texto dibujado).
         """
-        if isinstance(fill, str):
-            fill_rgb = self._hex_to_rgb(fill)
-        else:
-            fill_rgb = fill
+        fill_rgb = self._hex_to_rgb(fill) if isinstance(fill, str) else fill
 
         effective_max = max_width or (self._width - 120)
         lines = self._wrap_text(text, font, effective_max)
@@ -262,7 +258,7 @@ class SceneComposer:
         # Centrar horizontalmente
         x = (self._width - total_width) // 2
 
-        for i, (text, is_emoji) in enumerate(segments):
+        for i, (text, _is_emoji) in enumerate(segments):
             w, h, font = segment_widths[i]
             text_y = y + (max_height - h) // 2  # Alinear verticalmente
 
@@ -350,7 +346,7 @@ class SceneComposer:
         border_alpha: int = 80,
     ) -> None:
         """Dibuja una card con efecto glassmorphism."""
-        x1, y1, x2, y2 = xy
+        x1, y1, x2, _y2 = xy
 
         # Card con transparencia
         draw.rounded_rectangle(
@@ -812,7 +808,7 @@ class SceneComposer:
         y: int,
     ) -> None:
         """Dibuja el temporizador circular premium.
-        
+
         Soporta valores float para animar el arco de forma continua,
         mientras el texto interior muestra el número redondeado hacia arriba.
         """
@@ -823,7 +819,7 @@ class SceneComposer:
 
         # Color según tiempo restante (usar ceil para los cambios de color exactos al segundo)
         display_value = max(1, math.ceil(value))
-        
+
         if display_value <= 3:
             color = self._hex_to_rgb(self._colors.incorrecto)
         elif display_value <= 5:
@@ -845,7 +841,7 @@ class SceneComposer:
         # Arco de progreso (basado en el valor exacto float del timer)
         # Asumiendo 10 segundos como máximo estándar (ajustable si varía)
         # Para evitar que el arco empiece a bajar desde el primer frame, mapeamos:
-        progress = max(0.0, min(1.0, value / 10.0)) 
+        progress = max(0.0, min(1.0, value / 10.0))
         arc_angle = int(360 * progress)
         if arc_angle > 0:
             draw.arc(

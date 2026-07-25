@@ -45,7 +45,7 @@ class IQTestPlugin(BaseQuizPlugin):
   5. Razonamiento espacial: "Si giras esta figura 90°, ¿cómo se ve?"
   6. Razonamiento verbal: "¿Cuál de estas palabras NO pertenece: Perro, Gato, Mesa, Pez?"
   7. Operaciones: "Si □ + △ = 10 y □ - △ = 4, ¿cuánto vale □?"
-  8. Velocidad mental: "¿Cuánto es 17 × 3 + 9 - 4?"
+  8. Velocidad mental: "¿Cuánto es 17 x 3 + 9 - 4?"
 - Cada pregunta tiene 4 opciones de respuesta.
 - Para FÁCIL: patrones simples y analogías básicas.
 - Para MEDIO: requiere 2-3 pasos de cálculo o razonamiento.
