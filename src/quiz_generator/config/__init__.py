@@ -185,7 +185,7 @@ class VideoConfig(BaseSettings):
 class AntiRepeticionConfig(BaseSettings):
     """Configuración del sistema anti-repetición."""
 
-    habilitado: bool = True
+    habilitado: bool = False
     modelo_embeddings: str = "all-MiniLM-L6-v2"
     umbral_similitud: float = 0.85
     ruta_almacen: str = "data/embeddings"
