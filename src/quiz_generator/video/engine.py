@@ -35,6 +35,7 @@ from moviepy import (
     VideoClip,
     VideoFileClip,
     concatenate_videoclips,
+    vfx,
 )
 from PIL import Image, ImageDraw
 
@@ -154,9 +155,17 @@ class VideoEngine:
         cta_clip = self._create_animated_cta_clip(quiz, audio_pack)
         clips.append(cta_clip)
 
-        # Concatenar todos los clips
-        logger.info("Concatenando %d clips...", len(clips))
-        final_video = concatenate_videoclips(clips, method="compose")
+        # Concatenar todos los clips con crossfade
+        logger.info("Concatenando %d clips con transiciones...", len(clips))
+        crossfade_duration = 0.3
+        # Aplicar crossfade a todos los clips excepto el primero
+        faded_clips = [clips[0]]
+        for clip in clips[1:]:
+            try:
+                faded_clips.append(clip.with_effects([vfx.CrossFadeIn(crossfade_duration)]))
+            except Exception:
+                faded_clips.append(clip)
+        final_video = concatenate_videoclips(faded_clips, method="compose", padding=-crossfade_duration)
 
         # 4. Agregar música de fondo con ducking
         if self._settings.video.musica.habilitada:
@@ -256,7 +265,7 @@ class VideoEngine:
         question_idx: int,
         audio_pack: QuizAudioPack,
     ) -> CompositeVideoClip:
-        """Crea el clip de la pregunta con Ken Burns sutil y SFX."""
+        """Crea el clip de la pregunta con Ken Burns, partículas y SFX."""
         pregunta = quiz.preguntas[question_idx]
         answers_data = [
             {"texto": r.texto, "emoji": r.emoji, "es_correcta": r.es_correcta}
@@ -281,10 +290,18 @@ class VideoEngine:
                 audio = _safe_audio_clip(str(q_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
+        # Partículas para la escena de pregunta
+        particles = VisualEffects.create_particles(
+            self._width, self._height, num_particles=30, seed=question_idx * 10,
+        )
+
         def make_frame(t: float) -> np.ndarray:
+            # Ken Burns
             frame = VisualEffects.apply_ken_burns_lazy(
                 scene, t, duration, zoom_start=1.0, zoom_end=1.02,
             )
+            # Partículas
+            frame = VisualEffects.apply_particles_lazy(frame, t, particles)
             return _pil_to_numpy(frame)
 
         clip = VideoClip(make_frame, duration=duration)
@@ -313,14 +330,7 @@ class VideoEngine:
         quiz: Quiz,
         question_idx: int,
     ) -> CompositeVideoClip:
-        """Crea el clip del countdown animado a 60fps.
-
-        Genera frames fluidos con:
-        - Timer circular con arco que se reduce
-        - Ken Burns zoom sutil
-        - Ticks de sonido por segundo
-        - Tick urgente en los últimos 3 segundos
-        """
+        """Crea el clip del countdown animado a 60fps con partículas."""
         pregunta = quiz.preguntas[question_idx]
         timer_seconds = pregunta.tiempo_segundos
         answers_data = [
@@ -330,7 +340,7 @@ class VideoEngine:
 
         total_duration = float(timer_seconds)
 
-        # Pre-renderizar base limpia (sin timer) para evitar hacerlo 600 veces
+        # Pre-renderizar base limpia (sin timer)
         base_scene = self._composer.render_question_scene(
             question_number=question_idx + 1,
             total_questions=len(quiz.preguntas),
@@ -340,20 +350,25 @@ class VideoEngine:
             emoji_pista=pregunta.emoji_pista,
         )
 
+        # Partículas para el countdown
+        particles = VisualEffects.create_particles(
+            self._width, self._height, num_particles=25, seed=question_idx * 10 + 5,
+        )
+
         def make_frame(t: float) -> np.ndarray:
             time_left = max(0.001, timer_seconds - t)
 
-            # Dibujar el timer actual sobre una copia de la base
             frame_with_timer = base_scene.copy()
             draw = ImageDraw.Draw(frame_with_timer)
-            # Y fijo para el timer (se calcula igual que en composer.py)
-            self._composer._draw_premium_timer(draw, time_left, y=410)
+            self._composer._draw_premium_timer(draw, time_left, y=390)
 
-            # Ken Burns sutil continuo a lo largo de todo el countdown
+            # Ken Burns sutil
             final_frame = VisualEffects.apply_ken_burns_lazy(
                 frame_with_timer, t, total_duration,
                 zoom_start=1.0, zoom_end=1.04,
             )
+            # Partículas
+            final_frame = VisualEffects.apply_particles_lazy(final_frame, t, particles)
             return _pil_to_numpy(final_frame)
 
         clip = VideoClip(make_frame, duration=total_duration)
@@ -389,14 +404,7 @@ class VideoEngine:
         audio_pack: QuizAudioPack,
         answer_videos: dict[str, Path],
     ) -> CompositeVideoClip:
-        """Crea el clip de revelación con flash, video de respuesta, y SFX.
-
-        Flujo:
-        1. Flash rápido (6 frames)
-        2. Escena de respuesta correcta resaltada con confeti
-        3. Si hay video de Pexels: overlay del video
-        4. SFX de respuesta correcta + audio TTS
-        """
+        """Crea el clip de revelación con confeti animado, flash verde y SFX."""
         pregunta = quiz.preguntas[question_idx]
         answers_data = [
             {"texto": r.texto, "emoji": r.emoji, "es_correcta": r.es_correcta}
@@ -409,7 +417,7 @@ class VideoEngine:
         )
         correct_text = pregunta.respuestas[correct_idx].texto if pregunta.respuestas else ""
 
-        # Renderizar escena de respuesta correcta
+        # Renderizar escena de respuesta correcta (con banner, vignette, etc.)
         reveal_scene = self._composer.render_question_scene(
             question_number=question_idx + 1,
             total_questions=len(quiz.preguntas),
@@ -419,13 +427,6 @@ class VideoEngine:
             correct_index=correct_idx,
             emoji_pista=pregunta.emoji_pista,
         )
-
-        # Aplicar confeti
-        efectos = self._settings.video.efectos
-        if efectos.confeti_habilitado:
-            reveal_scene = VisualEffects.apply_confetti(
-                reveal_scene, num_particles=80, seed=question_idx,
-            )
 
         duration = self._tiempos.revelacion
 
@@ -437,14 +438,27 @@ class VideoEngine:
                 audio = _safe_audio_clip(str(a_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
+        # Confeti animado con gravedad
+        confetti_particles = VisualEffects.create_confetti_particles(
+            self._width, self._height, num_particles=80, seed=question_idx,
+        )
+
         def make_frame(t: float) -> np.ndarray:
             # 1. Ken Burns
             zoomed = VisualEffects.apply_ken_burns_lazy(
                 reveal_scene, t, duration, zoom_start=1.01, zoom_end=1.03,
             )
-            # 2. Flash decay
-            flashed = VisualEffects.apply_flash_lazy(zoomed, t, duration=0.5, peak_intensity=0.6)
-            return _pil_to_numpy(flashed)
+            # 2. Flash verde decay
+            flashed = VisualEffects.apply_flash_lazy(
+                zoomed, t, duration=0.8,
+                color=(0, 230, 100),
+                peak_intensity=0.5,
+            )
+            # 3. Confeti animado cayendo
+            confettied = VisualEffects.apply_animated_confetti_lazy(
+                flashed, t, confetti_particles,
+            )
+            return _pil_to_numpy(confettied)
 
         clip = VideoClip(make_frame, duration=duration)
 

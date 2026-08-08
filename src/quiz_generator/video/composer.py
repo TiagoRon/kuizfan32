@@ -93,16 +93,43 @@ class SceneComposer:
 
         return img
 
-    def _draw_subtle_pattern(self, draw: ImageDraw.ImageDraw) -> None:
-        """Dibuja un patrón decorativo sutil en el fondo."""
+    def _draw_subtle_pattern(self, draw: ImageDraw.ImageDraw, t: float = 0.0) -> None:
+        """Dibuja un patrón geométrico premium con grid hexagonal y orbs brillantes."""
         import random
         rng = random.Random(42)
-        # Puntos sutiles
-        for _ in range(40):
-            x = rng.randint(0, self._width)
-            y = rng.randint(0, self._height)
+        w, h = self._width, self._height
+
+        # Grid de líneas diagonales sutiles
+        line_color = (255, 255, 255, 8)
+        spacing = 80
+        for x in range(-h, w + h, spacing):
+            draw.line([(x, 0), (x - h // 2, h)], fill=line_color, width=1)
+        for x in range(-h, w + h, spacing):
+            draw.line([(x, 0), (x + h // 2, h)], fill=line_color, width=1)
+
+        # Orbs de luz (glow suave)
+        for _ in range(8):
+            ox = rng.randint(50, w - 50)
+            oy = rng.randint(50, h - 50)
+            orb_color = rng.choice([
+                (108, 92, 231),   # Violeta
+                (0, 206, 209),    # Turquesa
+                (255, 105, 180),  # Rosa
+            ])
+            # Glow grande difuso
+            for radius in range(60, 0, -5):
+                alpha = int(6 * (1 - radius / 60))
+                draw.ellipse(
+                    (ox - radius, oy - radius, ox + radius, oy + radius),
+                    fill=(*orb_color, alpha),
+                )
+
+        # Puntos de estrella pequeños
+        for _ in range(60):
+            x = rng.randint(0, w)
+            y = rng.randint(0, h)
             size = rng.randint(1, 3)
-            alpha = rng.randint(10, 30)
+            alpha = rng.randint(20, 50)
             draw.ellipse(
                 (x - size, y - size, x + size, y + size),
                 fill=(255, 255, 255, alpha),
@@ -588,6 +615,26 @@ class SceneComposer:
             self._height - total_options_height - 80,
         )
 
+        # Banner "CORRECTO" si estamos en modo reveal
+        if show_correct:
+            banner_y = option_start_y - 60
+            banner_color = self._hex_to_rgba(self._colors.correcto, 220)
+            draw.rounded_rectangle(
+                (80, banner_y, self._width - 80, banner_y + 48),
+                radius=24,
+                fill=banner_color,
+            )
+            banner_font = self._get_font(self._fonts_config.principal, 26)
+            banner_text = "✓ CORRECTO"
+            bbox = draw.textbbox((0, 0), banner_text, font=banner_font)
+            btw = bbox[2] - bbox[0]
+            draw.text(
+                ((self._width - btw) // 2, banner_y + 10),
+                banner_text,
+                fill=(255, 255, 255, 255),
+                font=banner_font,
+            )
+
         for i, answer in enumerate(answers):
             option_y = option_start_y + i * (option_height + option_margin)
             is_correct = (show_correct and (
@@ -598,39 +645,66 @@ class SceneComposer:
             # Determinar colores
             if is_correct:
                 card_bg = self._hex_to_rgb(self._colors.correcto)
-                card_alpha = 200
-                text_color = (0, 0, 0)
+                card_alpha = 220
+                text_color = (255, 255, 255)
                 label_bg = (0, 200, 80)
-                border_color = self._hex_to_rgb(self._colors.correcto)
+                border_color = (255, 215, 0)  # Borde dorado
+                border_width = 4
             elif is_incorrect:
-                card_bg = (40, 40, 55)
-                card_alpha = 120
-                text_color = (130, 130, 140)
-                label_bg = (60, 60, 75)
-                border_color = (60, 60, 75)
+                card_bg = (30, 30, 45)
+                card_alpha = 80
+                text_color = (90, 90, 100)
+                label_bg = (50, 50, 60)
+                border_color = (50, 50, 60)
+                border_width = 1
             else:
-                card_bg = (30, 30, 50)
-                card_alpha = 180
+                card_bg = (25, 25, 45)
+                card_alpha = 200
                 text_color = self._hex_to_rgb(self._colors.texto)
                 label_bg = self._hex_to_rgb(self._colors.primario)
                 border_color = self._hex_to_rgb(self._colors.primario)
+                border_width = 2
 
-            # Card glassmorphism
+            # Card con sombra
             card_xy = (50, option_y, self._width - 50, option_y + option_height)
-            self._draw_glassmorphism_card(
-                img, draw, card_xy,
-                bg_color=card_bg,
-                alpha=card_alpha,
-                radius=16,
-                border_color=border_color,
-                border_alpha=100 if not show_correct else 180,
+
+            # Sombra debajo
+            if not is_incorrect:
+                shadow_xy = (52, option_y + 3, self._width - 48, option_y + option_height + 3)
+                draw.rounded_rectangle(
+                    shadow_xy, radius=16,
+                    fill=(0, 0, 0, 60),
+                )
+
+            # Card principal
+            draw.rounded_rectangle(
+                card_xy, radius=16,
+                fill=(*card_bg, card_alpha),
+                outline=(*border_color, 200 if is_correct else 100),
+                width=border_width,
             )
 
-            # Check mark para respuesta correcta
+            # Accent stripe lateral izquierdo
+            stripe_color = (*label_bg, 255) if not is_incorrect else (*label_bg, 80)
+            draw.rounded_rectangle(
+                (50, option_y, 58, option_y + option_height),
+                radius=4,
+                fill=stripe_color,
+            )
+
+            # Brillo superior sutil (solo si no es incorrecta)
+            if not is_incorrect:
+                draw.rounded_rectangle(
+                    (52, option_y + 1, self._width - 52, option_y + 3),
+                    radius=2,
+                    fill=(255, 255, 255, 15),
+                )
+
+            # Check mark grande para respuesta correcta
             if is_correct:
-                check_font = self._get_font(self._fonts_config.principal, 32)
+                check_font = self._get_font(self._fonts_config.principal, 36)
                 draw.text(
-                    (self._width - 100, option_y + 20),
+                    (self._width - 105, option_y + 18),
                     "✓",
                     fill=(255, 255, 255, 255),
                     font=check_font,
@@ -640,7 +714,7 @@ class SceneComposer:
             label = labels[i] if i < len(labels) else str(i + 1)
             self._draw_label_circle(
                 draw,
-                center_x=95,
+                center_x=100,
                 center_y=option_y + option_height // 2,
                 label=label,
                 font=label_font,
@@ -648,40 +722,42 @@ class SceneComposer:
                 radius=20,
             )
 
-            # Texto de la respuesta con emoji
-            emoji_prefix = f"{answer.get('emoji', '')} " if answer.get("emoji") else ""
-            answer_text = f"{emoji_prefix}{answer.get('texto', '')}"
+            # Texto de la respuesta SIN emojis (para evitar encoding issues)
+            answer_text = answer.get('texto', '')
 
-            # Renderizar con soporte emoji
-            segments = FontManager.split_text_and_emojis(answer_text)
-            text_x = 130
+            # Truncar si es muy largo
+            max_text_width = self._width - 200
+            bbox_test = draw.textbbox((0, 0), answer_text, font=answer_font)
+            if bbox_test[2] - bbox_test[0] > max_text_width:
+                while len(answer_text) > 3:
+                    answer_text = answer_text[:-1]
+                    bbox_test = draw.textbbox((0, 0), answer_text + "...", font=answer_font)
+                    if bbox_test[2] - bbox_test[0] <= max_text_width:
+                        answer_text += "..."
+                        break
+
+            text_x = 135
             text_y = option_y + (option_height - 30) // 2
 
-            for seg_text, is_emoji in segments:
-                if is_emoji:
-                    emoji_f = self._get_emoji_font(answer_font.size)
-                    seg_font = emoji_f or answer_font
-                else:
-                    seg_font = answer_font
+            # Sombra de texto
+            if not is_incorrect:
+                draw.text(
+                    (text_x + 2, text_y + 2),
+                    answer_text,
+                    fill=(0, 0, 0, 80),
+                    font=answer_font,
+                )
 
-                try:
-                    draw.text(
-                        (text_x, text_y),
-                        seg_text,
-                        fill=(*text_color, 255) if len(text_color) == 3 else text_color,
-                        font=seg_font,
-                    )
-                    bbox = draw.textbbox((0, 0), seg_text, font=seg_font)
-                    text_x += bbox[2] - bbox[0]
-                except Exception:
-                    draw.text(
-                        (text_x, text_y),
-                        seg_text,
-                        fill=(*text_color, 255) if len(text_color) == 3 else text_color,
-                        font=answer_font,
-                    )
-                    bbox = draw.textbbox((0, 0), seg_text, font=answer_font)
-                    text_x += bbox[2] - bbox[0]
+            draw.text(
+                (text_x, text_y),
+                answer_text,
+                fill=(*text_color, 255) if len(text_color) == 3 else text_color,
+                font=answer_font,
+            )
+
+        # Vignette sutil en modo reveal
+        if show_correct:
+            self._apply_vignette_overlay(img, intensity=0.3)
 
         return img.convert("RGB")
 
@@ -807,17 +883,12 @@ class SceneComposer:
         value: float,
         y: int,
     ) -> None:
-        """Dibuja el temporizador circular premium.
-
-        Soporta valores float para animar el arco de forma continua,
-        mientras el texto interior muestra el número redondeado hacia arriba.
-        """
+        """Dibuja el temporizador circular premium — centrado, con glow."""
         timer_font = self._get_font(
             self._fonts_config.principal,
             self._fonts_config.tamanio_timer,
         )
 
-        # Color según tiempo restante (usar ceil para los cambios de color exactos al segundo)
         display_value = max(1, math.ceil(value))
 
         if display_value <= 3:
@@ -828,37 +899,77 @@ class SceneComposer:
             color = self._hex_to_rgb(self._colors.primario)
 
         center_x = self._width // 2
-        radius = 45
+        radius = 60  # Más grande
+        center_y = y + radius
+
+        # Glow del arco (halo difuso)
+        for gi in range(12, 0, -2):
+            glow_alpha = int(20 * (1 - gi / 12))
+            glow_r = radius + gi
+            draw.arc(
+                (center_x - glow_r, center_y - glow_r,
+                 center_x + glow_r, center_y + glow_r),
+                0, 360,
+                fill=(*color, glow_alpha),
+                width=3,
+            )
 
         # Fondo del timer (anillo oscuro)
         draw.arc(
-            (center_x - radius, y, center_x + radius, y + radius * 2),
+            (center_x - radius, center_y - radius,
+             center_x + radius, center_y + radius),
             0, 360,
             fill=(45, 45, 58, 200),
-            width=6,
+            width=8,
         )
 
-        # Arco de progreso (basado en el valor exacto float del timer)
-        # Asumiendo 10 segundos como máximo estándar (ajustable si varía)
-        # Para evitar que el arco empiece a bajar desde el primer frame, mapeamos:
+        # Arco de progreso
         progress = max(0.0, min(1.0, value / 10.0))
         arc_angle = int(360 * progress)
         if arc_angle > 0:
             draw.arc(
-                (center_x - radius, y, center_x + radius, y + radius * 2),
+                (center_x - radius, center_y - radius,
+                 center_x + radius, center_y + radius),
                 -90, -90 + arc_angle,
                 fill=(*color, 255),
-                width=6,
+                width=8,
             )
 
-        # Número centrado (siempre entero redondeado hacia arriba)
+        # Número centrado correctamente
         text = str(display_value)
         bbox = draw.textbbox((0, 0), text, font=timer_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
+        # Compensar offset de ascender de la fuente
+        text_offset_y = bbox[1]
         draw.text(
-            (center_x - text_w // 2, y + radius - text_h // 2),
+            (center_x - text_w // 2, center_y - text_h // 2 - text_offset_y),
             text,
             fill=(*color, 255),
             font=timer_font,
         )
+
+    def _apply_vignette_overlay(
+        self,
+        img: Image.Image,
+        intensity: float = 0.4,
+    ) -> None:
+        """Aplica una viñeta oscura sutil in-place sobre una imagen RGBA."""
+        import numpy as np
+        width, height = img.size
+        arr = np.array(img, dtype=np.float64)
+
+        y_grid, x_grid = np.mgrid[0:height, 0:width]
+        cx, cy = width / 2, height / 2
+        max_radius = math.sqrt(cx ** 2 + cy ** 2)
+
+        dist = np.sqrt((x_grid - cx) ** 2 + (y_grid - cy) ** 2)
+        vignette = 1.0 - (dist / max_radius) ** 2 * intensity
+        vignette = np.clip(vignette, 0, 1)
+
+        for c in range(min(3, arr.shape[2])):
+            arr[:, :, c] *= vignette
+
+        result = np.clip(arr, 0, 255).astype(np.uint8)
+        img.paste(Image.fromarray(result))
+

@@ -220,34 +220,37 @@ class VisualEffects:
     def create_particles(
         width: int,
         height: int,
-        num_particles: int = 30,
+        num_particles: int = 40,
         seed: int = 0,
     ) -> list[dict]:
-        """Crea la definición matemática de las partículas flotantes.
-
-        Útil para evaluación lazy (sin estado).
-        """
+        """Crea partículas flotantes premium — más grandes, brillantes y variadas."""
         rng = random.Random(seed)
         colors = [
-            (255, 215, 0, 120),    # Dorado
-            (108, 92, 231, 100),   # Violeta
-            (0, 206, 209, 110),    # Turquesa
-            (255, 105, 180, 90),   # Rosa
-            (0, 230, 118, 100),    # Verde
+            (255, 215, 0, 160),    # Dorado brillante
+            (108, 92, 231, 150),   # Violeta
+            (0, 220, 220, 150),    # Turquesa
+            (255, 105, 180, 140),  # Rosa
+            (0, 230, 118, 140),    # Verde
+            (255, 255, 255, 100),  # Blanco sutil
+            (160, 120, 255, 130),  # Lila
         ]
+        # Tipos: "circle", "star", "line"
+        types = ["circle", "circle", "circle", "star", "line"]
 
         particles = []
         for _ in range(num_particles):
             particles.append({
                 "start_x": rng.uniform(0, width),
                 "start_y": rng.uniform(0, height + 200),
-                "size": rng.uniform(3, 8),
-                "speed_y": rng.uniform(-40, -15),  # pixeles por segundo
-                "speed_x": rng.uniform(-10, 10),
-                "wobble_amp": rng.uniform(10, 40),
-                "wobble_freq": rng.uniform(1, 3), # radianes por segundo
+                "size": rng.uniform(4, 12),
+                "speed_y": rng.uniform(-50, -15),
+                "speed_x": rng.uniform(-12, 12),
+                "wobble_amp": rng.uniform(15, 50),
+                "wobble_freq": rng.uniform(1, 3),
                 "color": rng.choice(colors),
                 "phase": rng.uniform(0, 2 * math.pi),
+                "type": rng.choice(types),
+                "rotation_speed": rng.uniform(-2, 2),
             })
         return particles
 
@@ -257,9 +260,9 @@ class VisualEffects:
         t: float,
         particles: list[dict],
     ) -> Image.Image:
-        """Aplica partículas sobre un único frame en el instante t.
+        """Aplica partículas premium sobre un único frame en el instante t.
 
-        Evaluación lazy matemática, no requiere estado previo.
+        Soporta tipos: circle (con glow), star, line.
         """
         width, height = base_img.size
         result = base_img.copy().convert("RGBA")
@@ -267,25 +270,54 @@ class VisualEffects:
         draw = ImageDraw.Draw(overlay)
 
         for p in particles:
-            # Calcular posición en el tiempo t
             raw_y = p["start_y"] + p["speed_y"] * t
             raw_x = p["start_x"] + p["speed_x"] * t + p["wobble_amp"] * math.sin(t * p["wobble_freq"] + p["phase"])
 
-            # Wrap around (toroide)
             y = raw_y % (height + 40) - 20
             x = raw_x % (width + 40) - 20
 
-            # Fade near top/bottom center (y = height/2 es opacidad máxima)
-            alpha_ratio = 1 - abs(y / height - 0.5) * 0.8
+            alpha_ratio = 1 - abs(y / height - 0.5) * 0.6
             alpha = int(p["color"][3] * alpha_ratio)
             alpha = max(0, min(255, alpha))
             size = int(p["size"])
+            ptype = p.get("type", "circle")
+            color_rgb = p["color"][:3]
 
-            draw.ellipse(
-                (int(x) - size, int(y) - size,
-                 int(x) + size, int(y) + size),
-                fill=(*p["color"][:3], alpha),
-            )
+            ix, iy = int(x), int(y)
+
+            if ptype == "star":
+                # Estrella de 4 puntas
+                points = []
+                for i in range(8):
+                    r = size if i % 2 == 0 else size // 2
+                    angle = i * math.pi / 4 + t * p.get("rotation_speed", 1)
+                    points.append((
+                        ix + int(r * math.cos(angle)),
+                        iy + int(r * math.sin(angle)),
+                    ))
+                if len(points) >= 3:
+                    draw.polygon(points, fill=(*color_rgb, alpha))
+            elif ptype == "line":
+                angle = t * p.get("rotation_speed", 1)
+                dx = int(size * math.cos(angle))
+                dy = int(size * math.sin(angle))
+                draw.line(
+                    [(ix - dx, iy - dy), (ix + dx, iy + dy)],
+                    fill=(*color_rgb, alpha),
+                    width=2,
+                )
+            else:
+                # Circle con glow sutil
+                glow_size = size + 4
+                glow_alpha = max(0, alpha // 3)
+                draw.ellipse(
+                    (ix - glow_size, iy - glow_size, ix + glow_size, iy + glow_size),
+                    fill=(*color_rgb, glow_alpha),
+                )
+                draw.ellipse(
+                    (ix - size, iy - size, ix + size, iy + size),
+                    fill=(*color_rgb, alpha),
+                )
 
         result = Image.alpha_composite(result, overlay)
         return result.convert("RGB")
@@ -743,3 +775,106 @@ class VisualEffects:
                     (x - size, y),
                 ]
                 draw.polygon(points, outline=line_color)
+
+    @staticmethod
+    def create_confetti_particles(
+        width: int,
+        height: int,
+        num_particles: int = 100,
+        seed: int = 0,
+    ) -> list[dict]:
+        """Crea partículas de confeti con gravedad para animación."""
+        rng = random.Random(seed)
+        colors = [
+            (255, 215, 0),     # Dorado
+            (255, 69, 0),      # Rojo-naranja
+            (0, 206, 209),     # Turquesa
+            (255, 105, 180),   # Rosa
+            (50, 205, 50),     # Verde lima
+            (255, 165, 0),     # Naranja
+            (138, 43, 226),    # Violeta
+            (0, 191, 255),     # Azul cielo
+            (255, 255, 0),     # Amarillo
+        ]
+        particles = []
+        for _ in range(num_particles):
+            particles.append({
+                "x": rng.uniform(0, width),
+                "y": rng.uniform(-height * 0.5, -20),
+                "vx": rng.uniform(-80, 80),
+                "vy": rng.uniform(200, 600),
+                "gravity": rng.uniform(150, 350),
+                "rotation": rng.uniform(0, 360),
+                "rot_speed": rng.uniform(-400, 400),
+                "w": rng.randint(8, 18),
+                "h": rng.randint(4, 10),
+                "color": rng.choice(colors),
+                "alpha": rng.randint(200, 255),
+                "wobble_amp": rng.uniform(30, 80),
+                "wobble_freq": rng.uniform(2, 5),
+                "phase": rng.uniform(0, 2 * math.pi),
+            })
+        return particles
+
+    @staticmethod
+    def apply_animated_confetti_lazy(
+        base_img: Image.Image,
+        t: float,
+        particles: list[dict],
+    ) -> Image.Image:
+        """Aplica confeti cayendo con gravedad sobre un frame en el instante t."""
+        width, height = base_img.size
+        result = base_img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        for p in particles:
+            # Física: posición con gravedad
+            px = p["x"] + p["vx"] * t + p["wobble_amp"] * math.sin(t * p["wobble_freq"] + p["phase"])
+            py = p["y"] + p["vy"] * t + 0.5 * p["gravity"] * t * t
+
+            # Wrap horizontal
+            px = px % (width + 40) - 20
+
+            # Skip si ya pasó la pantalla
+            if py > height + 50:
+                continue
+            if py < -50:
+                continue
+
+            # Fade out cerca del fondo
+            fade = 1.0
+            if py > height * 0.8:
+                fade = max(0, 1.0 - (py - height * 0.8) / (height * 0.2))
+
+            alpha = int(p["alpha"] * fade)
+            if alpha <= 0:
+                continue
+
+            rot = p["rotation"] + p["rot_speed"] * t
+            w, h = p["w"], p["h"]
+
+            # Crear partícula rotada
+            particle = Image.new("RGBA", (w * 3, h * 3), (0, 0, 0, 0))
+            p_draw = ImageDraw.Draw(particle)
+            cx, cy = w * 3 // 2, h * 3 // 2
+            p_draw.rounded_rectangle(
+                (cx - w // 2, cy - h // 2, cx + w // 2, cy + h // 2),
+                radius=2,
+                fill=(*p["color"], alpha),
+            )
+            particle = particle.rotate(rot, expand=False, resample=Image.BILINEAR)
+
+            paste_x = int(px) - w * 3 // 2
+            paste_y = int(py) - h * 3 // 2
+
+            # Paste con bounds check
+            if -w * 3 < paste_x < width and -h * 3 < paste_y < height:
+                overlay.paste(
+                    particle,
+                    (paste_x, paste_y),
+                    particle,
+                )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
