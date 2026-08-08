@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 from moviepy import (
+    AudioClip,
     AudioFileClip,
     CompositeAudioClip,
     CompositeVideoClip,
@@ -51,6 +52,25 @@ logger = logging.getLogger(__name__)
 def _pil_to_numpy(img: Image.Image) -> np.ndarray:
     """Convierte una imagen Pillow a array numpy para MoviePy."""
     return np.array(img.convert("RGB"))
+
+
+def _safe_audio_clip(path: str | Path) -> AudioClip:
+    """Carga un AudioFileClip envuelto de forma segura para evitar errores de out-of-bounds en MoviePy 2."""
+    clip = AudioFileClip(str(path))
+    dur = clip.duration
+    def safe_make_frame(t):
+        if hasattr(t, '__len__'):
+            res = np.zeros((len(t), 2))
+            mask = (t >= 0) & (t <= dur)
+            if np.any(mask):
+                res[mask] = clip.get_frame(t[mask])
+            return res
+        else:
+            return clip.get_frame(t) if 0 <= t <= dur else np.zeros(2)
+    safe_clip = AudioClip(safe_make_frame, duration=dur)
+    safe_clip.fps = getattr(clip, 'fps', 44100)
+    return safe_clip
+
 
 
 class VideoEngine:
@@ -189,7 +209,7 @@ class VideoEngine:
         # Duración basada en el audio
         duration = self._tiempos.hook
         if audio_pack.hook and audio_pack.hook.audio_path.exists():
-            audio = AudioFileClip(str(audio_pack.hook.audio_path))
+            audio = _safe_audio_clip(str(audio_pack.hook.audio_path))
             duration = max(duration, audio.duration + 0.5)
         else:
             audio = None
@@ -212,7 +232,7 @@ class VideoEngine:
         sfx_clips = []
         try:
             pop_path = self._sfx_manager.get_sfx(SFXManager.POP)
-            sfx_clips.append(AudioFileClip(str(pop_path)).with_start(0.1))
+            sfx_clips.append(_safe_audio_clip(str(pop_path)).with_start(0.1))
         except Exception:
             pass
 
@@ -256,7 +276,7 @@ class VideoEngine:
         if question_idx < len(audio_pack.questions):
             q_audio_seg = audio_pack.questions[question_idx]
             if q_audio_seg.audio_path.exists():
-                audio = AudioFileClip(str(q_audio_seg.audio_path))
+                audio = _safe_audio_clip(str(q_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
         def make_frame(t: float) -> np.ndarray:
@@ -275,7 +295,7 @@ class VideoEngine:
         try:
             q_sfx_path = self._sfx_manager.get_sfx(SFXManager.QUESTION_APPEAR)
             audio_layers.append(
-                AudioFileClip(str(q_sfx_path)).with_start(0).with_volume_scaled(0.5),
+                _safe_audio_clip(str(q_sfx_path)).with_start(0).with_volume_scaled(0.5),
             )
         except Exception:
             pass
@@ -343,7 +363,7 @@ class VideoEngine:
                 remaining = timer_seconds - t
                 sfx_name = SFXManager.TICK_URGENT if remaining <= 3 else SFXManager.TICK
                 tick_path = self._sfx_manager.get_sfx(sfx_name)
-                tick_audio = AudioFileClip(str(tick_path)).with_start(float(t))
+                tick_audio = _safe_audio_clip(str(tick_path)).with_start(float(t))
                 audio_layers.append(tick_audio)
             except Exception:
                 pass
@@ -351,7 +371,7 @@ class VideoEngine:
         # SFX de inicio de countdown
         try:
             start_path = self._sfx_manager.get_sfx(SFXManager.COUNTDOWN_START)
-            audio_layers.insert(0, AudioFileClip(str(start_path)).with_start(0))
+            audio_layers.insert(0, _safe_audio_clip(str(start_path)).with_start(0))
         except Exception:
             pass
 
@@ -412,7 +432,7 @@ class VideoEngine:
         if question_idx < len(audio_pack.answers):
             a_audio_seg = audio_pack.answers[question_idx]
             if a_audio_seg.audio_path.exists():
-                audio = AudioFileClip(str(a_audio_seg.audio_path))
+                audio = _safe_audio_clip(str(a_audio_seg.audio_path))
                 duration = max(duration, audio.duration + 0.3)
 
         def make_frame(t: float) -> np.ndarray:
@@ -441,14 +461,14 @@ class VideoEngine:
 
         try:
             correct_sfx = self._sfx_manager.get_sfx(SFXManager.CORRECT)
-            audio_layers.append(AudioFileClip(str(correct_sfx)).with_start(0))
+            audio_layers.append(_safe_audio_clip(str(correct_sfx)).with_start(0))
         except Exception:
             pass
 
         try:
             confetti_sfx = self._sfx_manager.get_sfx(SFXManager.CONFETTI)
             audio_layers.append(
-                AudioFileClip(str(confetti_sfx)).with_start(0.15).with_volume_scaled(0.4),
+                _safe_audio_clip(str(confetti_sfx)).with_start(0.15).with_volume_scaled(0.4),
             )
         except Exception:
             pass
@@ -470,7 +490,7 @@ class VideoEngine:
         duration = self._tiempos.outro
 
         if audio_pack.cta and audio_pack.cta.audio_path.exists():
-            audio = AudioFileClip(str(audio_pack.cta.audio_path))
+            audio = _safe_audio_clip(str(audio_pack.cta.audio_path))
             duration = max(duration, audio.duration + 0.5)
         else:
             audio = None
@@ -493,7 +513,7 @@ class VideoEngine:
 
         try:
             fanfare_path = self._sfx_manager.get_sfx(SFXManager.FANFARE)
-            audio_layers.append(AudioFileClip(str(fanfare_path)).with_start(0))
+            audio_layers.append(_safe_audio_clip(str(fanfare_path)).with_start(0))
         except Exception:
             pass
 
@@ -532,7 +552,7 @@ class VideoEngine:
         )
 
         try:
-            music_audio = AudioFileClip(str(music_path))
+            music_audio = _safe_audio_clip(str(music_path))
 
             # Ajustar duración exacta
             if music_audio.duration > total_duration:
