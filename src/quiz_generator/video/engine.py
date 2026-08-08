@@ -27,6 +27,7 @@ from pathlib import Path
 
 import numpy as np
 from moviepy import (
+    AudioArrayClip,
     AudioClip,
     AudioFileClip,
     CompositeAudioClip,
@@ -55,21 +56,22 @@ def _pil_to_numpy(img: Image.Image) -> np.ndarray:
 
 
 def _safe_audio_clip(path: str | Path) -> AudioClip:
-    """Carga un AudioFileClip envuelto de forma segura para evitar errores de out-of-bounds en MoviePy 2."""
-    clip = AudioFileClip(str(path))
-    dur = clip.duration
-    def safe_make_frame(t):
-        if hasattr(t, '__len__'):
-            res = np.zeros((len(t), 2))
-            mask = (t >= 0) & (t <= dur)
-            if np.any(mask):
-                res[mask] = clip.get_frame(t[mask])
-            return res
-        else:
-            return clip.get_frame(t) if 0 <= t <= dur else np.zeros(2)
-    safe_clip = AudioClip(safe_make_frame, duration=dur)
-    safe_clip.fps = getattr(clip, 'fps', 44100)
-    return safe_clip
+    """Carga el audio completamente en RAM para evitar bugs de lectura (out-of-bounds) de MoviePy 2."""
+    try:
+        clip = AudioFileClip(str(path))
+        fps = getattr(clip, "fps", 44100)
+        
+        # Leer todo a memoria de forma segura
+        audio_array = clip.to_soundarray()
+        clip.close()
+        
+        safe_clip = AudioArrayClip(audio_array, fps=fps)
+        return safe_clip
+    except Exception as e:
+        logger.warning(f"Error cargando audio {path}: {e}")
+        def silent_frame(t):
+            return np.zeros((len(t), 2)) if hasattr(t, '__len__') else np.zeros(2)
+        return AudioClip(silent_frame, duration=0.1)
 
 
 
