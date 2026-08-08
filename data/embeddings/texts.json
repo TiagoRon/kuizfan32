@@ -17,7 +17,16 @@
     "¿Cuál es el planeta que rota sobre su eje de lado?",
     "¿Qué instrumento inventó Adolphe Sax en 1846?",
     "¿Cuál es la capital de Australia?",
-    "Solo el 5% sabe estas 8 respuestas. ¿Eres tú?"
+    "Solo el 5% sabe estas 8 respuestas. ¿Eres tú?",
+    "¿Qué país tiene la mayor cantidad de islas en todo el mundo?",
+    "¿Cuál es el único animal que puede vivir para siempre?",
+    "¿Qué invento fue creado originalmente como un error farmacéutico?",
+    "¿Cuál es el deporte con más seguidores en el mundo?",
+    "¿Cuántos corazones tiene un pulpo?",
+    "¿Qué pintor famosísimo solo vendió un cuadro en toda su vida?",
+    "¿Cuál fue la primera empresa en alcanzar un valor de 1 billón de dólares?",
+    "¿Qué animal es el único que puede reconocerse en un espejo?",
+    "¿Crees ser un genio? Solo el 5% supera este reto 🧠"
   ],
   "metadata": [
     {
@@ -90,6 +99,42 @@
     },
     {
       "quiz_id": "64515d7396ed",
+      "tipo": "hook"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "1ea4e92617f9",
       "tipo": "hook"
     }
   ]
