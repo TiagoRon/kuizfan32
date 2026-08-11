@@ -287,6 +287,24 @@ class GroqProvider(IAIProvider):
             disparadores_virales=triggers,
         )
 
-    async def generate_hooks(self, quiz_type: QuizType, count: int = 5, context: dict[str, Any] | None = None) -> list[Hook]:
-        # Implementación dummy para interfaces completas
+    async def generate_hooks(
+        self,
+        quiz_type: QuizType,
+        count: int = 5,
+        language: str = "es",
+    ) -> list[str]:
         raise NotImplementedError("Generación de hooks aislada no implementada en Groq fallback")
+
+    async def generate_metadata(
+        self,
+        quiz: Quiz,
+        language: str = "es",
+    ) -> QuizMetadata:
+        raise NotImplementedError("Generación de metadata aislada no implementada en Groq fallback")
+
+    async def analyze_trends(
+        self,
+        category: str,
+        language: str = "es",
+    ) -> dict[str, Any]:
+        raise NotImplementedError("Análisis de tendencias no implementado en Groq fallback")
