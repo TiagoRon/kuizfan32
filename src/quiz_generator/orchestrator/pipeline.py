@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from quiz_generator.ai.gemini_provider import GeminiProvider
+from quiz_generator.ai.groq_provider import GroqProvider
 from quiz_generator.anti_repetition.engine import AntiRepetitionEngine
 from quiz_generator.audio.engine import AudioEngine
 from quiz_generator.config import Settings, get_settings
@@ -42,6 +43,12 @@ class GenerationPipeline:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._ai_provider = GeminiProvider(self._settings)
+        
+        # Proveedor de respaldo gratuito (Groq)
+        self._fallback_provider = None
+        if getattr(self._settings, "groq_api_key", None):
+            self._fallback_provider = GroqProvider(self._settings)
+            
         self._audio_engine = AudioEngine(self._settings)
         self._video_engine = VideoEngine(self._settings)
         self._anti_rep = AntiRepetitionEngine(self._settings)
@@ -206,14 +213,31 @@ class GenerationPipeline:
         if self._settings.anti_repeticion.habilitado and self._anti_rep.total_entries > 0:
             context["preguntas_existentes"] = []  # Se podrían cargar del store
 
-        quiz = await self._ai_provider.generate_quiz(
-            quiz_type=request.tipo,
-            difficulty=request.dificultad,
-            num_questions=request.num_preguntas,
-            language=request.idioma,
-            topic=request.tema,
-            context=context,
-        )
+        from quiz_generator.core.exceptions import AIRateLimitError, AIProviderError
+
+        try:
+            quiz = await self._ai_provider.generate_quiz(
+                quiz_type=request.tipo,
+                difficulty=request.dificultad,
+                num_questions=request.num_preguntas,
+                language=request.idioma,
+                topic=request.tema,
+                context=context,
+            )
+        except (AIRateLimitError, AIProviderError) as e:
+            if self._fallback_provider:
+                logger.warning("Fallo en Gemini (%s). Usando GROQ de emergencia...", e)
+                quiz = await self._fallback_provider.generate_quiz(
+                    quiz_type=request.tipo,
+                    difficulty=request.dificultad,
+                    num_questions=request.num_preguntas,
+                    language=request.idioma,
+                    topic=request.tema,
+                    context=context,
+                )
+            else:
+                logger.error("Fallo en IA y no hay proveedor de respaldo configurado.")
+                raise e
 
         return quiz
 
