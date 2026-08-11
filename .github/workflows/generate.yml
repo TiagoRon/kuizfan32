@@ -114,6 +114,8 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           QUIZ_GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          QUIZ_GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
           QUIZ_GENERAL__IDIOMA: "es"
 
       - name: 💾 Guardar memoria (Anti-repetición)
