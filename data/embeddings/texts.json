@@ -26,7 +26,17 @@
     "¿Qué pintor famosísimo solo vendió un cuadro en toda su vida?",
     "¿Cuál fue la primera empresa en alcanzar un valor de 1 billón de dólares?",
     "¿Qué animal es el único que puede reconocerse en un espejo?",
-    "¿Crees ser un genio? Solo el 5% supera este reto 🧠"
+    "¿Crees ser un genio? Solo el 5% supera este reto 🧠",
+    "¿Cuál es el nombre de la primera computadora personal?",
+    "¿Cuál es el nombre del primer animal en la Tierra?",
+    "¿Cuál es el nombre del primer emperador romano?",
+    "¿Qué es el nombre de la montaña más alta de la Tierra?",
+    "¿Cuál es el nombre del director del filme 'El Padrino'?",
+    "¿Qué es el nombre del primer presidente de los Estados Unidos?",
+    "¿Qué es el nombre del científico que descubrió la ley de la gravedad?",
+    "¿Qué es el nombre del primer hombre en llegar a la Luna?",
+    "¿Qué es el nombre del pintor que creó la Mona Lisa?",
+    "¿Sabías que..."
   ],
   "metadata": [
     {
@@ -135,6 +145,46 @@
     },
     {
       "quiz_id": "1ea4e92617f9",
+      "tipo": "hook"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "7f7248b1f319",
       "tipo": "hook"
     }
   ]
