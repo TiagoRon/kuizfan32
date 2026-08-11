@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import contextlib
 import logging
+import math
 from pathlib import Path
 
 import numpy as np
@@ -131,6 +132,9 @@ class VideoEngine:
         hook_clip = self._create_animated_hook_clip(quiz, audio_pack)
         clips.append(hook_clip)
 
+        # Tipo de cada clip para elegir la transición correcta
+        clip_types: list[str] = ["hook"]
+
         # 2. Escenas de preguntas (sin curiosidad)
         for i, _pregunta in enumerate(quiz.preguntas):
             logger.info("Componiendo pregunta %d/%d...", i + 1, len(quiz.preguntas))
@@ -140,32 +144,30 @@ class VideoEngine:
                 quiz, i, audio_pack,
             )
             clips.append(question_clip)
+            clip_types.append("question")
 
             # 2b. Countdown animado a 60fps
             countdown_clip = self._create_smooth_countdown_clip(quiz, i)
             clips.append(countdown_clip)
+            clip_types.append("countdown")
 
             # 2c. Revelación con video/animación
             reveal_clip = self._create_animated_reveal_clip(
                 quiz, i, audio_pack, answer_videos,
             )
             clips.append(reveal_clip)
+            clip_types.append("reveal")
 
         # 3. Escena CTA animado
         cta_clip = self._create_animated_cta_clip(quiz, audio_pack)
         clips.append(cta_clip)
+        clip_types.append("cta")
 
-        # Concatenar todos los clips con crossfade
-        logger.info("Concatenando %d clips con transiciones...", len(clips))
-        crossfade_duration = 0.3
-        # Aplicar crossfade a todos los clips excepto el primero
-        faded_clips = [clips[0]]
-        for clip in clips[1:]:
-            try:
-                faded_clips.append(clip.with_effects([vfx.CrossFadeIn(crossfade_duration)]))
-            except Exception:
-                faded_clips.append(clip)
-        final_video = concatenate_videoclips(faded_clips, method="compose", padding=-crossfade_duration)
+        # Concatenar con transiciones premium variadas por tipo de escena
+        logger.info("Concatenando %d clips con transiciones premium...", len(clips))
+        final_video = self._concatenate_with_premium_transitions(
+            clips, clip_types,
+        )
 
         # 4. Agregar música de fondo con ducking
         if self._settings.video.musica.habilitada:
@@ -229,11 +231,26 @@ class VideoEngine:
         particles = VisualEffects.create_particles(self._width, self._height, num_particles=25, seed=42)
 
         def make_frame(t: float) -> np.ndarray:
-            # 1. Ken Burns
-            zoomed = VisualEffects.apply_ken_burns_lazy(
-                scene, t, duration, zoom_start=1.0, zoom_end=1.04,
-            )
-            # 2. Partículas
+            # Entry animation: slide-up + zoom-out + fade-in
+            entry_dur = 0.7
+            if t < entry_dur:
+                p = t / entry_dur
+                p = 1 - (1 - p) ** 3  # ease-out cubic
+                scale = 1.12 - 0.12 * p
+                zoomed = VisualEffects.apply_ken_burns_lazy(
+                    scene, 0, 1, zoom_start=scale, zoom_end=scale,
+                )
+                # Slide-up reveal
+                zoomed = VisualEffects.apply_slide_up_reveal_lazy(
+                    zoomed, t, entry_dur, max_offset=50,
+                )
+                # Fade in
+                dark = Image.new("RGB", scene.size, (0, 0, 0))
+                zoomed = Image.blend(dark, zoomed, p)
+            else:
+                zoomed = VisualEffects.apply_ken_burns_lazy(
+                    scene, t, duration, zoom_start=1.0, zoom_end=1.04,
+                )
             frame = VisualEffects.apply_particles_lazy(zoomed, t, particles)
             return _pil_to_numpy(frame)
 
@@ -296,10 +313,27 @@ class VideoEngine:
         )
 
         def make_frame(t: float) -> np.ndarray:
-            # Ken Burns
-            frame = VisualEffects.apply_ken_burns_lazy(
-                scene, t, duration, zoom_start=1.0, zoom_end=1.02,
-            )
+            # Entry animation: slide-up + scale pop-in + fade
+            entry_dur = 0.6
+            if t < entry_dur:
+                p = t / entry_dur
+                p = 1 - (1 - p) ** 3  # ease-out cubic
+                scale = 1.06 - 0.06 * p
+                frame = VisualEffects.apply_ken_burns_lazy(
+                    scene, 0, 1, zoom_start=scale, zoom_end=scale,
+                )
+                # Slide content up into place
+                frame = VisualEffects.apply_slide_up_reveal_lazy(
+                    frame, t, entry_dur, max_offset=45,
+                )
+                # Fade in from black
+                dark = Image.new("RGB", scene.size, (0, 0, 0))
+                frame = Image.blend(dark, frame, p)
+            else:
+                # Normal Ken Burns
+                frame = VisualEffects.apply_ken_burns_lazy(
+                    scene, t, duration, zoom_start=1.0, zoom_end=1.02,
+                )
             # Partículas
             frame = VisualEffects.apply_particles_lazy(frame, t, particles)
             return _pil_to_numpy(frame)
@@ -360,13 +394,42 @@ class VideoEngine:
 
             frame_with_timer = base_scene.copy()
             draw = ImageDraw.Draw(frame_with_timer)
-            self._composer._draw_premium_timer(draw, time_left, y=390)
+            # Use dynamic timer position calculated by composer
+            self._composer._draw_premium_timer(draw, time_left, y=self._composer._last_timer_y)
 
-            # Ken Burns sutil
+            # Accelerating Ken Burns zoom in final seconds for tension
+            if time_left <= 3:
+                zoom_extra = 0.03 * (1 - time_left / 3)
+                zoom_end = 1.04 + zoom_extra
+            else:
+                zoom_end = 1.04
+
             final_frame = VisualEffects.apply_ken_burns_lazy(
                 frame_with_timer, t, total_duration,
-                zoom_start=1.0, zoom_end=1.04,
+                zoom_start=1.0, zoom_end=zoom_end,
             )
+
+            # Radial glow pulse around timer for visual drama
+            timer_cx = self._width // 2
+            timer_cy = self._composer._last_timer_y + 60
+            glow_color = (255, 40, 40) if time_left <= 3 else (
+                (255, 214, 0) if time_left <= 5 else (108, 92, 231)
+            )
+            glow_intensity = 0.6 if time_left <= 3 else 0.3
+            final_frame = VisualEffects.apply_radial_glow_pulse_lazy(
+                final_frame, t,
+                center=(timer_cx, timer_cy),
+                radius=100,
+                color=glow_color,
+                frequency=3.0 if time_left > 3 else 5.0,
+                intensity=glow_intensity,
+            )
+
+            # Red urgency tint pulse when timer < 3 seconds
+            if time_left <= 3:
+                pulse = abs(math.sin(t * 6)) * 0.06
+                red_layer = Image.new("RGB", final_frame.size, (255, 30, 30))
+                final_frame = Image.blend(final_frame, red_layer, pulse)
             # Partículas
             final_frame = VisualEffects.apply_particles_lazy(final_frame, t, particles)
             return _pil_to_numpy(final_frame)
@@ -440,21 +503,30 @@ class VideoEngine:
 
         # Confeti animado con gravedad
         confetti_particles = VisualEffects.create_confetti_particles(
-            self._width, self._height, num_particles=80, seed=question_idx,
+            self._width, self._height, num_particles=120, seed=question_idx,
         )
 
         def make_frame(t: float) -> np.ndarray:
-            # 1. Ken Burns
-            zoomed = VisualEffects.apply_ken_burns_lazy(
-                reveal_scene, t, duration, zoom_start=1.01, zoom_end=1.03,
+            # Zoom bounce with elastic overshoot for dramatic reveal
+            zoomed = VisualEffects.apply_zoom_bounce_lazy(
+                reveal_scene, t,
+                bounce_duration=0.5,
+                initial_scale=1.18,
+                overshoot=0.02,
             )
-            # 2. Flash verde decay
+            if t >= 0.5:
+                # After bounce settles, gentle Ken Burns
+                zoomed = VisualEffects.apply_ken_burns_lazy(
+                    reveal_scene, t - 0.5, duration - 0.5,
+                    zoom_start=1.0, zoom_end=1.03,
+                )
+            # Bright flash for impact
             flashed = VisualEffects.apply_flash_lazy(
-                zoomed, t, duration=0.8,
-                color=(0, 230, 100),
-                peak_intensity=0.5,
+                zoomed, t, duration=0.45,
+                color=(0, 255, 130),
+                peak_intensity=0.7,
             )
-            # 3. Confeti animado cayendo
+            # Dense confetti
             confettied = VisualEffects.apply_animated_confetti_lazy(
                 flashed, t, confetti_particles,
             )
@@ -499,7 +571,7 @@ class VideoEngine:
         quiz: Quiz,
         audio_pack: QuizAudioPack,
     ) -> CompositeVideoClip:
-        """Crea el clip final del CTA con animación."""
+        """Crea el clip final del CTA con animación y shimmer premium."""
         cta_text = quiz.metadata.cta or "¡Comenta cuántas acertaste! 🎯"
         scene = self._composer.render_cta_scene(cta_text)
 
@@ -514,8 +586,27 @@ class VideoEngine:
         particles = VisualEffects.create_particles(self._width, self._height, num_particles=20, seed=99)
 
         def make_frame(t: float) -> np.ndarray:
-            zoomed = VisualEffects.apply_ken_burns_lazy(
-                scene, t, duration, zoom_start=1.0, zoom_end=1.03,
+            # Entry animation with fade-in + scale
+            entry_dur = 0.6
+            if t < entry_dur:
+                p = t / entry_dur
+                p = 1 - (1 - p) ** 3  # ease-out
+                scale = 1.10 - 0.10 * p
+                zoomed = VisualEffects.apply_ken_burns_lazy(
+                    scene, 0, 1, zoom_start=scale, zoom_end=scale,
+                )
+                dark = Image.new("RGB", scene.size, (0, 0, 0))
+                zoomed = Image.blend(dark, zoomed, p)
+            else:
+                # Subtle breathing zoom pulse
+                pulse = 1.0 + 0.006 * math.sin((t - entry_dur) * 3.0)
+                zoomed = VisualEffects.apply_ken_burns_lazy(
+                    scene, t, duration, zoom_start=pulse, zoom_end=pulse * 1.01,
+                )
+            # Shimmer premium que recorre el CTA
+            zoomed = VisualEffects.apply_text_shimmer(
+                zoomed, t, speed=1.5,
+                color=(255, 255, 255), intensity=0.12,
             )
             frame = VisualEffects.apply_particles_lazy(zoomed, t, particles)
             return _pil_to_numpy(frame)
@@ -537,6 +628,128 @@ class VideoEngine:
             clip = clip.with_audio(CompositeAudioClip(audio_layers))
 
         return clip
+
+    # =========================================================================
+    # Transiciones Premium entre Escenas
+    # =========================================================================
+
+    def _concatenate_with_premium_transitions(
+        self,
+        clips: list,
+        clip_types: list[str],
+    ) -> CompositeVideoClip:
+        """Concatena clips con transiciones animadas variadas según el tipo de escena.
+
+        Selecciona la transición más apropiada para cada par de escenas:
+        - hook → question:     zoom transition (dramático)
+        - question → countdown: sin transición (misma escena visual)
+        - countdown → reveal:  radial reveal (revelado circular)
+        - reveal → question:   slide lateral (frescura)
+        - reveal → cta:        wipe horizontal (cierre)
+        """
+        if len(clips) <= 1:
+            return clips[0] if clips else CompositeVideoClip([])
+
+        trans_duration = 0.6  # Duración de cada transición
+
+        # Construir lista final: clip, transición, clip, transición, ...
+        final_clips = [clips[0]]
+
+        for i in range(1, len(clips)):
+            prev_type = clip_types[i - 1] if i - 1 < len(clip_types) else "unknown"
+            curr_type = clip_types[i] if i < len(clip_types) else "unknown"
+
+            # Elegir tipo de transición según el par de escenas
+            transition_style = self._pick_transition_style(prev_type, curr_type)
+
+            if transition_style == "none":
+                # Sin transición animada, solo concatenar directo
+                final_clips.append(clips[i])
+            else:
+                # Crear clip de transición animada
+                try:
+                    trans_clip = self._create_transition_clip(
+                        clips[i - 1], clips[i],
+                        transition_style, trans_duration,
+                    )
+                    final_clips.append(trans_clip)
+                    final_clips.append(clips[i])
+                except Exception:
+                    logger.warning(
+                        "Error creando transición %s, usando crossfade",
+                        transition_style,
+                    )
+                    try:
+                        final_clips.append(
+                            clips[i].with_effects([vfx.CrossFadeIn(0.3)]),
+                        )
+                    except Exception:
+                        final_clips.append(clips[i])
+
+        return concatenate_videoclips(final_clips, method="compose")
+
+    @staticmethod
+    def _pick_transition_style(prev_type: str, curr_type: str) -> str:
+        """Elige el estilo de transición según el par de tipos de escena."""
+        pair = (prev_type, curr_type)
+        transition_map = {
+            ("hook", "question"): "zoom",
+            ("question", "countdown"): "none",  # Misma escena, sin corte
+            ("countdown", "reveal"): "radial",
+            ("reveal", "question"): "slide",
+            ("reveal", "cta"): "wipe",
+        }
+        return transition_map.get(pair, "zoom")
+
+    def _create_transition_clip(
+        self,
+        clip_out,
+        clip_in,
+        style: str,
+        duration: float,
+    ) -> VideoClip:
+        """Crea un VideoClip de transición animada entre dos clips.
+
+        Captura el último frame del clip saliente y el primer frame del
+        clip entrante, y genera una transición animada entre ellos.
+        """
+        # Capturar frames extremos
+        try:
+            last_frame_time = max(0, clip_out.duration - 0.05)
+            frame_out = Image.fromarray(clip_out.get_frame(last_frame_time))
+        except Exception:
+            frame_out = Image.new("RGB", (self._width, self._height), (0, 0, 0))
+
+        try:
+            frame_in = Image.fromarray(clip_in.get_frame(0.0))
+        except Exception:
+            frame_in = Image.new("RGB", (self._width, self._height), (0, 0, 0))
+
+        def make_frame(t: float) -> np.ndarray:
+            if style == "zoom":
+                result = VisualEffects.apply_zoom_transition_lazy(
+                    frame_out, frame_in, t, duration,
+                )
+            elif style == "slide":
+                result = VisualEffects.apply_slide_transition_lazy(
+                    frame_out, frame_in, t, duration, direction="left",
+                )
+            elif style == "radial":
+                result = VisualEffects.apply_radial_reveal_lazy(
+                    frame_out, frame_in, t, duration,
+                )
+            elif style == "wipe":
+                result = VisualEffects.apply_wipe_transition_lazy(
+                    frame_out, frame_in, t, duration, direction="right",
+                )
+            else:
+                # Fallback: simple blend
+                progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+                result = Image.blend(frame_out, frame_in, progress)
+
+            return _pil_to_numpy(result)
+
+        return VideoClip(make_frame, duration=duration)
 
     # =========================================================================
     # Música de Fondo

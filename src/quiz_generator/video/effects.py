@@ -878,3 +878,480 @@ class VisualEffects:
 
         result = Image.alpha_composite(result, overlay)
         return result.convert("RGB")
+
+    # =========================================================================
+    # Transition Effects (Lazy — frame-by-frame for MoviePy)
+    # =========================================================================
+
+    @staticmethod
+    def apply_slide_transition_lazy(
+        img_out: Image.Image,
+        img_in: Image.Image,
+        t: float,
+        duration: float,
+        direction: str = "left",
+    ) -> Image.Image:
+        """Genera un frame de transición slide entre dos imágenes.
+
+        La imagen saliente se desliza fuera y la entrante entra desde
+        el lado opuesto, con easing suave.
+
+        Args:
+            img_out: Imagen que sale.
+            img_in: Imagen que entra.
+            t: Tiempo actual en la transición.
+            duration: Duración total de la transición.
+            direction: Dirección del slide ("left", "right", "up", "down").
+
+        Returns:
+            Frame compuesto de la transición.
+        """
+        progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+        # Ease-in-out cubic
+        if progress < 0.5:
+            eased = 4 * progress * progress * progress
+        else:
+            eased = 1 - (-2 * progress + 2) ** 3 / 2
+
+        width, height = img_out.size
+        result = Image.new("RGB", (width, height), (0, 0, 0))
+
+        if direction == "left":
+            offset = int(width * eased)
+            result.paste(img_out, (-offset, 0))
+            result.paste(img_in, (width - offset, 0))
+        elif direction == "right":
+            offset = int(width * eased)
+            result.paste(img_out, (offset, 0))
+            result.paste(img_in, (-width + offset, 0))
+        elif direction == "up":
+            offset = int(height * eased)
+            result.paste(img_out, (0, -offset))
+            result.paste(img_in, (0, height - offset))
+        else:  # down
+            offset = int(height * eased)
+            result.paste(img_out, (0, offset))
+            result.paste(img_in, (0, -height + offset))
+
+        return result
+
+    @staticmethod
+    def apply_zoom_transition_lazy(
+        img_out: Image.Image,
+        img_in: Image.Image,
+        t: float,
+        duration: float,
+    ) -> Image.Image:
+        """Transición zoom: la imagen saliente se aleja (shrink + fade)
+        y la entrante aparece detrás con zoom-in suave.
+
+        Args:
+            img_out: Imagen que sale.
+            img_in: Imagen que entra.
+            t: Tiempo actual.
+            duration: Duración total.
+
+        Returns:
+            Frame compuesto.
+        """
+        progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+        # Ease-out quad for smooth feel
+        eased = 1 - (1 - progress) ** 2
+
+        width, height = img_out.size
+
+        # Imagen entrante: zoom-in de 1.15x → 1.0x
+        in_zoom = 1.15 - 0.15 * eased
+        in_w = int(width * in_zoom)
+        in_h = int(height * in_zoom)
+        img_in_zoomed = img_in.resize((in_w, in_h), Image.BILINEAR)
+        left = (in_w - width) // 2
+        top = (in_h - height) // 2
+        img_in_cropped = img_in_zoomed.crop((left, top, left + width, top + height))
+
+        # Imagen saliente: shrink de 1.0x → 0.7x con fade-out
+        out_zoom = 1.0 - 0.3 * eased
+        out_w = max(1, int(width * out_zoom))
+        out_h = max(1, int(height * out_zoom))
+        img_out_zoomed = img_out.resize((out_w, out_h), Image.BILINEAR)
+
+        # Componer: fondo = entrante, encima = saliente (centrada, con fade)
+        result = img_in_cropped.copy()
+
+        if eased < 0.95:  # Solo mostrar saliente si aún no desapareció
+            paste_x = (width - out_w) // 2
+            paste_y = (height - out_h) // 2
+            # Fade-out de la imagen saliente
+            alpha = int(255 * (1 - eased))
+            out_rgba = img_out_zoomed.convert("RGBA")
+            # Apply uniform alpha
+            r, g, b, a = out_rgba.split()
+            a = a.point(lambda _: alpha)
+            out_rgba = Image.merge("RGBA", (r, g, b, a))
+
+            result_rgba = result.convert("RGBA")
+            result_rgba.paste(out_rgba, (paste_x, paste_y), out_rgba)
+            result = result_rgba.convert("RGB")
+
+        return result
+
+    @staticmethod
+    def apply_wipe_transition_lazy(
+        img_out: Image.Image,
+        img_in: Image.Image,
+        t: float,
+        duration: float,
+        direction: str = "right",
+    ) -> Image.Image:
+        """Transición wipe: un barrido revela la nueva imagen progresivamente.
+
+        Incluye un borde suave brillante en la línea del wipe.
+
+        Args:
+            img_out: Imagen que sale.
+            img_in: Imagen que entra.
+            t: Tiempo actual.
+            duration: Duración total.
+            direction: Dirección del wipe ("right", "left", "down", "up").
+
+        Returns:
+            Frame compuesto.
+        """
+        progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+        # Ease-in-out
+        eased = progress * progress * (3 - 2 * progress)
+
+        width, height = img_out.size
+        result = img_out.copy()
+
+        if direction in ("right", "left"):
+            wipe_pos = int(width * eased)
+            if direction == "right":
+                # Revelar de izquierda a derecha
+                result.paste(img_in.crop((0, 0, wipe_pos, height)), (0, 0))
+                # Borde brillante
+                edge_width = min(8, wipe_pos, width - wipe_pos)
+                if edge_width > 0:
+                    edge = Image.new("RGB", (edge_width, height), (255, 255, 255))
+                    result_rgba = result.convert("RGBA")
+                    edge_rgba = edge.convert("RGBA")
+                    r, g, b, a = edge_rgba.split()
+                    a = a.point(lambda _: 120)
+                    edge_rgba = Image.merge("RGBA", (r, g, b, a))
+                    result_rgba.paste(edge_rgba, (wipe_pos - edge_width // 2, 0), edge_rgba)
+                    result = result_rgba.convert("RGB")
+            else:
+                start = width - wipe_pos
+                result.paste(img_in.crop((start, 0, width, height)), (start, 0))
+                edge_width = min(8, wipe_pos, width - wipe_pos)
+                if edge_width > 0:
+                    edge = Image.new("RGB", (edge_width, height), (255, 255, 255))
+                    result_rgba = result.convert("RGBA")
+                    edge_rgba = edge.convert("RGBA")
+                    r, g, b, a = edge_rgba.split()
+                    a = a.point(lambda _: 120)
+                    edge_rgba = Image.merge("RGBA", (r, g, b, a))
+                    result_rgba.paste(edge_rgba, (start - edge_width // 2, 0), edge_rgba)
+                    result = result_rgba.convert("RGB")
+        else:
+            wipe_pos = int(height * eased)
+            if direction == "down":
+                result.paste(img_in.crop((0, 0, width, wipe_pos)), (0, 0))
+            else:
+                start = height - wipe_pos
+                result.paste(img_in.crop((0, start, width, height)), (0, start))
+
+        return result
+
+    @staticmethod
+    def apply_radial_reveal_lazy(
+        img_out: Image.Image,
+        img_in: Image.Image,
+        t: float,
+        duration: float,
+    ) -> Image.Image:
+        """Revelado circular desde el centro — la nueva imagen aparece
+        expandiéndose radialmente.
+
+        Args:
+            img_out: Imagen que sale.
+            img_in: Imagen que entra.
+            t: Tiempo actual.
+            duration: Duración total.
+
+        Returns:
+            Frame compuesto.
+        """
+        progress = max(0.0, min(1.0, t / max(duration, 0.001)))
+        # Ease-out quart for dramatic reveal
+        eased = 1 - (1 - progress) ** 4
+
+        width, height = img_out.size
+        cx, cy = width // 2, height // 2
+        max_radius = int(math.sqrt(cx ** 2 + cy ** 2))
+        current_radius = int(max_radius * eased)
+
+        if current_radius <= 0:
+            return img_out.copy()
+        if current_radius >= max_radius:
+            return img_in.copy()
+
+        # Crear máscara circular
+        mask = Image.new("L", (width, height), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.ellipse(
+            (cx - current_radius, cy - current_radius,
+             cx + current_radius, cy + current_radius),
+            fill=255,
+        )
+
+        # Componer
+        result = img_out.copy()
+        result.paste(img_in, (0, 0), mask)
+
+        # Borde brillante del círculo
+        ring_width = min(6, current_radius)
+        if ring_width > 1:
+            ring_draw = ImageDraw.Draw(result)
+            for rw in range(ring_width):
+                alpha_ratio = 1 - rw / ring_width
+                r = current_radius - rw
+                if r > 0:
+                    # Dibujar arco como outline
+                    ring_draw.ellipse(
+                        (cx - r, cy - r, cx + r, cy + r),
+                        outline=(255, 255, 255),
+                        width=1,
+                    )
+
+        return result
+
+    @staticmethod
+    def apply_text_shimmer(
+        img: Image.Image,
+        t: float,
+        speed: float = 2.0,
+        color: tuple[int, int, int] = (255, 255, 255),
+        intensity: float = 0.15,
+        band_width: float = 0.15,
+    ) -> Image.Image:
+        """Aplica un efecto shimmer/brillo diagonal que recorre la imagen.
+
+        Crea una banda diagonal brillante que se mueve de izquierda a
+        derecha, dando un efecto de brillo premium.
+
+        Args:
+            img: Imagen base.
+            t: Tiempo actual.
+            speed: Velocidad del shimmer (ciclos por segundo).
+            color: Color del brillo.
+            intensity: Intensidad máxima del brillo (0-1).
+            band_width: Ancho de la banda como fracción del ancho total.
+
+        Returns:
+            Imagen con shimmer aplicado.
+        """
+        width, height = img.size
+
+        # Posición de la banda (0 a 1, cíclica)
+        pos = (t * speed) % 1.5 - 0.25  # Un poco fuera de rango para entrar/salir
+
+        result = img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Banda diagonal brillante
+        band_center = int(pos * (width + height))
+        half_band = int(band_width * width)
+
+        for offset in range(-half_band, half_band + 1):
+            line_pos = band_center + offset
+            dist_ratio = abs(offset) / max(half_band, 1)
+            alpha = int(255 * intensity * (1 - dist_ratio))
+            if alpha <= 0:
+                continue
+
+            # Línea diagonal (45 grados)
+            x1 = line_pos
+            y1 = 0
+            x2 = line_pos - height
+            y2 = height
+            draw.line([(x1, y1), (x2, y2)], fill=(*color, alpha), width=2)
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+
+    # =========================================================================
+    # Efectos de Transición Animados (Lazy — por frame)
+    # =========================================================================
+
+    @staticmethod
+    def apply_slide_up_reveal_lazy(
+        img: Image.Image,
+        t: float,
+        reveal_duration: float = 0.6,
+        max_offset: int = 60,
+    ) -> Image.Image:
+        """Desliza el contenido hacia arriba desde un offset, creando efecto de entrada.
+
+        El contenido comienza desplazado hacia abajo y se desliza suavemente
+        a su posición final con un ease-out cúbico.
+        """
+        if t >= reveal_duration:
+            return img
+
+        progress = min(1.0, t / reveal_duration)
+        progress = 1 - (1 - progress) ** 3  # ease-out cubic
+
+        offset = int(max_offset * (1 - progress))
+        if offset <= 0:
+            return img
+
+        width, height = img.size
+        # Crop la parte visible (sin el offset superior) y pegarla desplazada
+        shifted = Image.new("RGB", (width, height), (0, 0, 0))
+        region = img.crop((0, 0, width, height - offset))
+        shifted.paste(region, (0, offset))
+
+        return shifted
+
+    @staticmethod
+    def apply_radial_glow_pulse_lazy(
+        img: Image.Image,
+        t: float,
+        center: tuple[int, int],
+        radius: int = 80,
+        color: tuple[int, int, int] = (108, 92, 231),
+        frequency: float = 4.0,
+        intensity: float = 0.5,
+    ) -> Image.Image:
+        """Aplica un pulso de brillo radial animado (para timers, badges, etc.)."""
+        pulse = (1 + math.sin(t * frequency * 2 * math.pi)) / 2  # 0..1
+        if pulse < 0.05:
+            return img
+
+        result = img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        max_alpha = int(60 * intensity * pulse)
+        cx, cy = center
+
+        for r in range(radius, 0, -4):
+            ratio = r / radius
+            alpha = int(max_alpha * (1 - ratio))
+            draw.ellipse(
+                (cx - r, cy - r, cx + r, cy + r),
+                fill=(*color, alpha),
+            )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+
+    @staticmethod
+    def apply_directional_wipe_lazy(
+        img_from: Image.Image,
+        img_to: Image.Image,
+        t: float,
+        wipe_duration: float = 0.5,
+        direction: str = "up",
+        edge_softness: int = 80,
+    ) -> Image.Image:
+        """Transición wipe direccional entre dos imágenes.
+
+        Crea un barrido suave con borde difuminado en la dirección indicada.
+        Directions: 'up', 'down', 'left', 'right'.
+        """
+        if t <= 0:
+            return img_from
+        if t >= wipe_duration:
+            return img_to
+
+        progress = min(1.0, t / wipe_duration)
+        progress = progress * progress * (3 - 2 * progress)  # smoothstep
+
+        width, height = img_from.size
+        arr_from = np.array(img_from, dtype=np.float32)
+        arr_to = np.array(img_to, dtype=np.float32)
+
+        # Create wipe mask
+        if direction == "up":
+            wipe_pos = int(height * (1 - progress))
+            mask = np.zeros((height, width), dtype=np.float32)
+            for y in range(height):
+                if y > wipe_pos + edge_softness:
+                    mask[y, :] = 1.0
+                elif y > wipe_pos:
+                    mask[y, :] = (y - wipe_pos) / edge_softness
+        elif direction == "down":
+            wipe_pos = int(height * progress)
+            mask = np.zeros((height, width), dtype=np.float32)
+            for y in range(height):
+                if y < wipe_pos - edge_softness:
+                    mask[y, :] = 1.0
+                elif y < wipe_pos:
+                    mask[y, :] = (wipe_pos - y) / edge_softness
+        elif direction == "left":
+            wipe_pos = int(width * (1 - progress))
+            mask = np.zeros((height, width), dtype=np.float32)
+            for x in range(width):
+                if x > wipe_pos + edge_softness:
+                    mask[:, x] = 1.0
+                elif x > wipe_pos:
+                    mask[:, x] = (x - wipe_pos) / edge_softness
+        else:  # right
+            wipe_pos = int(width * progress)
+            mask = np.zeros((height, width), dtype=np.float32)
+            for x in range(width):
+                if x < wipe_pos - edge_softness:
+                    mask[:, x] = 1.0
+                elif x < wipe_pos:
+                    mask[:, x] = (wipe_pos - x) / edge_softness
+
+        mask = np.clip(mask, 0, 1)
+        mask_3d = mask[:, :, np.newaxis]
+
+        result = (arr_from * (1 - mask_3d) + arr_to * mask_3d).astype(np.uint8)
+        return Image.fromarray(result)
+
+    @staticmethod
+    def apply_zoom_bounce_lazy(
+        img: Image.Image,
+        t: float,
+        bounce_duration: float = 0.5,
+        initial_scale: float = 1.15,
+        overshoot: float = 0.03,
+    ) -> Image.Image:
+        """Zoom con rebote elástico — ideal para revelar respuestas.
+
+        Comienza ampliado, se reduce con un ligero rebote antes
+        de asentarse en escala 1.0.
+        """
+        if t >= bounce_duration:
+            return img
+
+        progress = min(1.0, t / bounce_duration)
+
+        # Elastic ease-out (simplified)
+        if progress < 0.6:
+            # Main settle: initial_scale → 1.0
+            p = progress / 0.6
+            p = 1 - (1 - p) ** 3
+            scale = initial_scale + (1.0 - initial_scale) * p
+        elif progress < 0.8:
+            # Undershoot
+            p = (progress - 0.6) / 0.2
+            scale = 1.0 - overshoot * math.sin(p * math.pi)
+        else:
+            # Final settle
+            p = (progress - 0.8) / 0.2
+            scale = (1.0 - overshoot) + overshoot * p
+
+        width, height = img.size
+        new_w = int(width * scale)
+        new_h = int(height * scale)
+
+        zoomed = img.resize((new_w, new_h), Image.BILINEAR)
+        left = (new_w - width) // 2
+        top = (new_h - height) // 2
+        return zoomed.crop((left, top, left + width, top + height))

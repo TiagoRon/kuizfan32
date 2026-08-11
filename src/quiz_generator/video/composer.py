@@ -45,6 +45,7 @@ class SceneComposer:
         self._font_manager = FontManager(
             cache_dir=settings.assets.directorio_fuentes,
         )
+        self._last_timer_y = 400  # Updated dynamically by render_question_scene
 
     def _get_font(self, family: str, size: int) -> ImageFont.FreeTypeFont:
         """Obtiene una fuente via FontManager con caché."""
@@ -446,20 +447,29 @@ class SceneComposer:
         # === Emoji grande en el centro superior ===
         if emoji:
             emoji_font = self._get_emoji_font(140)
-            text_font = self._get_font(self._fonts_config.principal, 140)
-            display_font = emoji_font or text_font
-
-            try:
-                bbox = draw.textbbox((0, 0), emoji, font=display_font)
-                emoji_w = bbox[2] - bbox[0]
-                x = (self._width - emoji_w) // 2
-                draw.text(
-                    (x, self._height // 2 - 320),
-                    emoji, font=display_font,
-                    fill=(255, 255, 255, 255),
-                )
-            except Exception:
-                pass  # Emoji no renderizable, continuar
+            if emoji_font:
+                try:
+                    bbox = draw.textbbox((0, 0), emoji, font=emoji_font)
+                    emoji_w = bbox[2] - bbox[0]
+                    if emoji_w > 10:  # Glyph actually rendered
+                        x = (self._width - emoji_w) // 2
+                        draw.text(
+                            (x, self._height // 2 - 320),
+                            emoji, font=emoji_font,
+                            fill=(255, 255, 255, 255),
+                        )
+                except Exception:
+                    pass
+            else:
+                # Fallback: decorative glow orb instead of broken square
+                cx, cy = self._width // 2, self._height // 2 - 280
+                primario = self._hex_to_rgb(self._colors.primario)
+                for r in range(55, 0, -5):
+                    alpha = int(40 * (1 - r / 55))
+                    draw.ellipse(
+                        (cx - r, cy - r, cx + r, cy + r),
+                        fill=(*primario, alpha),
+                    )
 
         # === Texto del hook — grande y con outline ===
         hook_font = self._get_font(
@@ -484,9 +494,19 @@ class SceneComposer:
             fill=bar_color,
         )
         bar_font = self._get_font(self._fonts_config.principal, 28)
-        bar_text = "⚡ QUIZ TIME ⚡"
+        bar_text = "QUIZ TIME"
         bbox = draw.textbbox((0, 0), bar_text, font=bar_font)
         bar_tw = bbox[2] - bbox[0]
+        # Decorative diamonds flanking the text
+        diamond_s = 8
+        diamond_cy = bar_y + 30
+        diamond_color = (255, 255, 255, 200)
+        for side in [-1, 1]:
+            dxx = self._width // 2 + side * (bar_tw // 2 + 28)
+            draw.polygon([
+                (dxx, diamond_cy - diamond_s), (dxx + diamond_s, diamond_cy),
+                (dxx, diamond_cy + diamond_s), (dxx - diamond_s, diamond_cy),
+            ], fill=diamond_color)
         draw.text(
             ((self._width - bar_tw) // 2, bar_y + 14),
             bar_text,
@@ -494,16 +514,25 @@ class SceneComposer:
             font=bar_font,
         )
 
-        # === Flecha/indicador de "swipe up" ===
+        # === Indicador "RESPONDE AHORA" ===
         arrow_y = self._height - 180
         arrow_font = self._get_font(self._fonts_config.secundaria, 22)
-        arrow_text = "▲ RESPONDE AHORA ▲"
+        arrow_text = "RESPONDE AHORA"
         bbox = draw.textbbox((0, 0), arrow_text, font=arrow_font)
         atw = bbox[2] - bbox[0]
+        text_color = self._hex_to_rgba(self._colors.texto_secundario, 150)
+        # Small triangle arrows on each side
+        tri_s = 7
+        for side in [-1, 1]:
+            tx = self._width // 2 + side * (atw // 2 + 22)
+            ty = arrow_y + 10
+            draw.polygon([
+                (tx, ty - tri_s), (tx + tri_s * side, ty), (tx, ty + tri_s),
+            ], fill=text_color)
         draw.text(
             ((self._width - atw) // 2, arrow_y),
             arrow_text,
-            fill=self._hex_to_rgba(self._colors.texto_secundario, 150),
+            fill=text_color,
             font=arrow_font,
         )
 
@@ -520,15 +549,13 @@ class SceneComposer:
         show_correct: bool = False,
         correct_index: int | None = None,
     ) -> Image.Image:
-        """Renderiza la escena de una pregunta — diseño premium.
+        """Renderiza la escena de una pregunta — diseño premium con zonas fijas.
 
-        Incluye:
-        - Barra de progreso con gradiente y glow
-        - Badge circular con número de pregunta
-        - Texto de pregunta con sombra
-        - Cards glassmorphism para opciones
-        - Labels en círculos de color (A, B, C, D)
-        - Timer circular con arco animado
+        Layout por zonas proporcionales (para 1920px de alto):
+        - Zona superior  (0-15%):   barra de progreso + badge pregunta
+        - Zona pregunta  (15-45%):  texto de la pregunta (centrado vertical)
+        - Zona timer     (45-55%):  timer circular (posición fija)
+        - Zona opciones  (55-95%):  cards de respuesta distribuidas uniformemente
         """
         img = self._create_gradient_background(
             color_top=self._colors.fondo,
@@ -537,13 +564,21 @@ class SceneComposer:
         )
         draw = ImageDraw.Draw(img)
 
-        y_cursor = 80
+        # =====================================================================
+        # Zonas proporcionales fijas (no se solapan nunca)
+        # =====================================================================
+        zone_top_start = 80
+        zone_question_start = int(self._height * 0.15)
+        zone_timer_start = int(self._height * 0.44)
+        zone_options_start = int(self._height * 0.54)
+        zone_options_end = int(self._height * 0.94)
 
-        # === Barra de progreso premium ===
+        # === ZONA SUPERIOR: Barra de progreso + Badge ===
+        y_cursor = zone_top_start
         self._draw_premium_progress_bar(draw, question_number, total_questions, y=y_cursor)
         y_cursor += 50
 
-        # === Badge con número de pregunta ===
+        # Badge con número de pregunta
         badge_font = self._get_font(self._fonts_config.principal, 20)
         badge_text = f"PREGUNTA {question_number}/{total_questions}"
         bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
@@ -561,45 +596,51 @@ class SceneComposer:
             fill=(255, 255, 255, 255),
             font=badge_font,
         )
-        y_cursor += 60
 
-        # === Emoji pista (para Emoji Quiz) ===
+        # === ZONA PREGUNTA: Texto centrado en la zona ===
+        question_zone_y = zone_question_start
+
+        # Emoji pista (para Emoji Quiz) — solo si hay fuente emoji
         if emoji_pista:
             emoji_font = self._get_emoji_font(96)
-            text_font = self._get_font(self._fonts_config.principal, 96)
-            font_to_use = emoji_font or text_font
+            rendered_emoji = False
+            if emoji_font:
+                try:
+                    bbox = draw.textbbox((0, 0), emoji_pista, font=emoji_font)
+                    ew = bbox[2] - bbox[0]
+                    if ew > 10:  # Glyph actually rendered (not tofu)
+                        draw.text(
+                            ((self._width - ew) // 2, question_zone_y),
+                            emoji_pista, font=emoji_font,
+                            fill=(255, 255, 255, 255),
+                        )
+                        rendered_emoji = True
+                except Exception:
+                    pass
+            if rendered_emoji:
+                question_zone_y += 120
 
-            try:
-                bbox = draw.textbbox((0, 0), emoji_pista, font=font_to_use)
-                ew = bbox[2] - bbox[0]
-                draw.text(
-                    ((self._width - ew) // 2, y_cursor),
-                    emoji_pista, font=font_to_use,
-                    fill=(255, 255, 255, 255),
-                )
-            except Exception:
-                pass
-            y_cursor += 130
-
-        # === Texto de la pregunta — con sombra ===
+        # Texto de la pregunta — con sombra
         q_font = self._get_font(
             self._fonts_config.principal,
             self._fonts_config.tamanio_pregunta,
         )
-        y_cursor = self._draw_text_centered(
-            draw, question_text, y=y_cursor, font=q_font,
+        self._draw_text_centered(
+            draw, question_text, y=question_zone_y, font=q_font,
             fill=self._colors.texto,
             shadow=True,
             outline=False,
+            max_width=self._width - 100,
         )
-        y_cursor += 30
 
-        # === Temporizador circular ===
+        # === ZONA TIMER: Posición fija, nunca se solapa ===
+        # Store timer Y position for countdown clip to use dynamically
+        self._last_timer_y = zone_timer_start
+
         if timer_value is not None:
-            self._draw_premium_timer(draw, timer_value, y=y_cursor)
-            y_cursor += 100
+            self._draw_premium_timer(draw, timer_value, y=zone_timer_start)
 
-        # === Opciones de respuesta en cards premium ===
+        # === ZONA OPCIONES: Cards distribuidas uniformemente ===
         answer_font = self._get_font(
             self._fonts_config.secundaria,
             self._fonts_config.tamanio_respuesta,
@@ -608,16 +649,21 @@ class SceneComposer:
         labels = ["A", "B", "C", "D"]
 
         option_height = 80
-        option_margin = 14
-        total_options_height = len(answers) * (option_height + option_margin)
-        option_start_y = max(
-            y_cursor + 10,
-            self._height - total_options_height - 80,
-        )
+        num_answers = len(answers)
+        available_height = zone_options_end - zone_options_start
+        # Distribuir opciones uniformemente en la zona
+        if num_answers > 0:
+            total_cards_height = num_answers * option_height
+            remaining_space = available_height - total_cards_height
+            option_margin = max(10, remaining_space // (num_answers + 1))
+        else:
+            option_margin = 14
+
+        option_start_y = zone_options_start + option_margin
 
         # Banner "CORRECTO" si estamos en modo reveal
         if show_correct:
-            banner_y = option_start_y - 60
+            banner_y = option_start_y - 55
             banner_color = self._hex_to_rgba(self._colors.correcto, 220)
             draw.rounded_rectangle(
                 (80, banner_y, self._width - 80, banner_y + 48),
@@ -625,9 +671,16 @@ class SceneComposer:
                 fill=banner_color,
             )
             banner_font = self._get_font(self._fonts_config.principal, 26)
-            banner_text = "✓ CORRECTO"
+            banner_text = "CORRECTO"
             bbox = draw.textbbox((0, 0), banner_text, font=banner_font)
             btw = bbox[2] - bbox[0]
+            # Draw checkmark as geometric shape
+            chk_x = (self._width - btw) // 2 - 32
+            chk_cy = banner_y + 24
+            draw.line(
+                [(chk_x, chk_cy), (chk_x + 8, chk_cy + 10), (chk_x + 22, chk_cy - 8)],
+                fill=(255, 255, 255, 255), width=3,
+            )
             draw.text(
                 ((self._width - btw) // 2, banner_y + 10),
                 banner_text,
@@ -702,12 +755,13 @@ class SceneComposer:
 
             # Check mark grande para respuesta correcta
             if is_correct:
-                check_font = self._get_font(self._fonts_config.principal, 36)
-                draw.text(
-                    (self._width - 105, option_y + 18),
-                    "✓",
-                    fill=(255, 255, 255, 255),
-                    font=check_font,
+                # Draw checkmark as geometric lines (no Unicode dependency)
+                chk_cx = self._width - 88
+                chk_cy = option_y + option_height // 2
+                draw.line(
+                    [(chk_cx - 12, chk_cy), (chk_cx - 3, chk_cy + 11),
+                     (chk_cx + 14, chk_cy - 11)],
+                    fill=(255, 255, 255, 255), width=4,
                 )
 
             # Label circular (A, B, C, D)
@@ -761,28 +815,40 @@ class SceneComposer:
 
         return img.convert("RGB")
 
+
     def render_cta_scene(self, cta_text: str) -> Image.Image:
         """Renderiza la escena final con el Call-to-Action — diseño impactante."""
         img = self._create_gradient_background()
         draw = ImageDraw.Draw(img)
 
-        # === Emojis decorativos gigantes ===
-        emoji_text = "🎯🔥⭐"
-        emoji_font = self._get_emoji_font(80)
-        text_font = self._get_font(self._fonts_config.principal, 80)
-        display_font = emoji_font or text_font
-
-        try:
-            bbox = draw.textbbox((0, 0), emoji_text, font=display_font)
-            ew = bbox[2] - bbox[0]
-            draw.text(
-                ((self._width - ew) // 2, self._height // 2 - 250),
-                emoji_text,
-                font=display_font,
-                fill=(255, 255, 255, 255),
+        # === Decorative geometric shapes (no emoji dependency) ===
+        cx = self._width // 2
+        deco_y = self._height // 2 - 240
+        primario_rgb = self._hex_to_rgb(self._colors.primario)
+        sec_rgb = self._hex_to_rgb(self._colors.secundario)
+        # Central glow orb
+        for r in range(60, 0, -5):
+            alpha = int(45 * (1 - r / 60))
+            draw.ellipse(
+                (cx - r, deco_y - r, cx + r, deco_y + r),
+                fill=(*primario_rgb, alpha),
             )
-        except Exception:
-            pass
+        # Side accent diamonds
+        for dx in [-90, 90]:
+            dxx = cx + dx
+            draw.polygon([
+                (dxx, deco_y - 18), (dxx + 18, deco_y),
+                (dxx, deco_y + 18), (dxx - 18, deco_y),
+            ], fill=(*sec_rgb, 180))
+        # Sparkle dots
+        import random as _rng
+        _r = _rng.Random(77)
+        for _ in range(12):
+            sx = cx + _r.randint(-120, 120)
+            sy = deco_y + _r.randint(-50, 50)
+            ss = _r.randint(2, 5)
+            draw.ellipse((sx - ss, sy - ss, sx + ss, sy + ss),
+                         fill=(255, 255, 255, _r.randint(40, 100)))
 
         # === Texto CTA grande con outline ===
         cta_font = self._get_font(
@@ -806,7 +872,7 @@ class SceneComposer:
             fill=self._hex_to_rgba("#FF0050", 220),
         )
         bar_font = self._get_font(self._fonts_config.principal, 24)
-        bar_text = "❤️ LIKE + SUBSCRIBE ❤️"
+        bar_text = "LIKE + SUBSCRIBE"
         bbox = draw.textbbox((0, 0), bar_text, font=bar_font)
         btw = bbox[2] - bbox[0]
         draw.text(
@@ -899,7 +965,7 @@ class SceneComposer:
             color = self._hex_to_rgb(self._colors.primario)
 
         center_x = self._width // 2
-        radius = 60  # Más grande
+        radius = 50  # Más compacto para no solaparse
         center_y = y + radius
 
         # Glow del arco (halo difuso)
