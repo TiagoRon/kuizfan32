@@ -826,7 +826,6 @@ class VisualEffects:
         width, height = base_img.size
         result = base_img.copy().convert("RGBA")
         overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
-        draw = ImageDraw.Draw(overlay)
 
         for p in particles:
             # Física: posición con gravedad
@@ -1114,7 +1113,6 @@ class VisualEffects:
         if ring_width > 1:
             ring_draw = ImageDraw.Draw(result)
             for rw in range(ring_width):
-                alpha_ratio = 1 - rw / ring_width
                 r = current_radius - rw
                 if r > 0:
                     # Dibujar arco como outline
@@ -1355,3 +1353,195 @@ class VisualEffects:
         left = (new_w - width) // 2
         top = (new_h - height) // 2
         return zoomed.crop((left, top, left + width, top + height))
+
+    # =========================================================================
+    # Efectos Visuales Nuevos — Premium Atractivos
+    # =========================================================================
+
+    @staticmethod
+    def apply_neon_border_pulse_lazy(
+        img: Image.Image,
+        t: float,
+        color: tuple[int, int, int] = (108, 92, 231),
+        frequency: float = 2.0,
+        intensity: float = 0.4,
+        border_width: int = 6,
+    ) -> Image.Image:
+        """Aplica un borde de neón pulsante alrededor de la pantalla.
+
+        Crea un efecto de borde brillante que pulsa suavemente,
+        intensificándose para crear urgencia visual.
+        """
+        pulse = (1 + math.sin(t * frequency * 2 * math.pi)) / 2
+        if pulse * intensity < 0.02:
+            return img
+
+        width, height = img.size
+        result = img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        alpha = int(180 * intensity * pulse)
+        bw = border_width
+
+        # Bordes con gradiente de transparencia (más brillante en los bordes)
+        for i in range(bw):
+            layer_alpha = int(alpha * (1 - i / bw))
+            if layer_alpha <= 0:
+                continue
+            c = (*color, layer_alpha)
+            # Top
+            draw.line([(0, i), (width, i)], fill=c, width=1)
+            # Bottom
+            draw.line([(0, height - 1 - i), (width, height - 1 - i)], fill=c, width=1)
+            # Left
+            draw.line([(i, 0), (i, height)], fill=c, width=1)
+            # Right
+            draw.line([(width - 1 - i, 0), (width - 1 - i, height)], fill=c, width=1)
+
+        # Glow extra en las esquinas
+        corner_glow_r = bw * 4
+        corner_alpha = int(alpha * 0.3)
+        corners = [(0, 0), (width, 0), (0, height), (width, height)]
+        for cx, cy in corners:
+            for r in range(corner_glow_r, 0, -3):
+                ga = int(corner_alpha * (1 - r / corner_glow_r))
+                if ga > 0:
+                    draw.ellipse(
+                        (cx - r, cy - r, cx + r, cy + r),
+                        fill=(*color, ga),
+                    )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+
+    @staticmethod
+    def apply_chromatic_aberration_lazy(
+        img: Image.Image,
+        offset: int = 2,
+    ) -> Image.Image:
+        """Aplica aberración cromática (separación RGB) para efecto de urgencia.
+
+        Separa los canales R, G, B ligeramente para crear un efecto
+        de glitch/tensión visual.
+        """
+        if offset <= 0:
+            return img
+
+        width, _height = img.size
+        arr = np.array(img)
+
+        result = np.zeros_like(arr)
+        # Canal rojo desplazado a la izquierda
+        result[:, :max(0, width - offset), 0] = arr[:, min(offset, width):, 0]
+        # Canal verde sin desplazar (centro)
+        result[:, :, 1] = arr[:, :, 1]
+        # Canal azul desplazado a la derecha
+        result[:, min(offset, width):, 2] = arr[:, :max(0, width - offset), 2]
+
+        return Image.fromarray(result)
+
+    @staticmethod
+    def apply_scan_line_lazy(
+        img: Image.Image,
+        t: float,
+        speed: float = 1.5,
+        line_width: int = 4,
+        color: tuple[int, int, int] = (255, 255, 255),
+        intensity: float = 0.2,
+    ) -> Image.Image:
+        """Aplica una línea de escaneo horizontal que barre la pantalla.
+
+        Crea un efecto de glitch/scanner premium que recorre
+        de arriba a abajo periódicamente.
+        """
+        width, height = img.size
+
+        # Posición de la línea (cíclica)
+        pos = (t * speed) % 1.2 - 0.1
+        line_y = int(pos * height)
+
+        if line_y < -line_width * 3 or line_y > height + line_width * 3:
+            return img
+
+        result = img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        # Línea principal con glow
+        half = line_width * 3
+        for dy in range(-half, half + 1):
+            y = line_y + dy
+            if 0 <= y < height:
+                dist_ratio = abs(dy) / max(half, 1)
+                alpha = int(255 * intensity * (1 - dist_ratio) ** 2)
+                if alpha > 0:
+                    draw.line(
+                        [(0, y), (width, y)],
+                        fill=(*color, alpha),
+                        width=1,
+                    )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+
+    @staticmethod
+    def apply_energy_lines_lazy(
+        img: Image.Image,
+        t: float,
+        center: tuple[int, int] | None = None,
+        num_lines: int = 12,
+        color: tuple[int, int, int] = (108, 92, 231),
+        intensity: float = 0.3,
+        speed: float = 3.0,
+        seed: int = 0,
+    ) -> Image.Image:
+        """Aplica líneas de energía radiantes desde un punto.
+
+        Crea líneas que radian desde el centro (o un punto dado) hacia
+        los bordes, con animación pulsante y variación de longitud.
+        """
+        width, height = img.size
+        if center is None:
+            center = (width // 2, height // 2)
+
+        cx, cy = center
+        max_radius = int(math.sqrt(width ** 2 + height ** 2))
+
+        result = img.copy().convert("RGBA")
+        overlay = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+        draw = ImageDraw.Draw(overlay)
+
+        rng = random.Random(seed)
+
+        for i in range(num_lines):
+            # Ángulo fijo por línea, con un poco de variación
+            base_angle = (i / num_lines) * 2 * math.pi + rng.uniform(-0.1, 0.1)
+
+            # Pulsación individual por línea (desfasada)
+            phase = rng.uniform(0, 2 * math.pi)
+            pulse = (1 + math.sin(t * speed * 2 * math.pi + phase)) / 2
+
+            if pulse < 0.15:
+                continue
+
+            # Longitud variable con pulsación
+            line_length = int(max_radius * 0.3 * pulse + max_radius * 0.1)
+            start_r = int(max_radius * 0.05)
+
+            x1 = cx + int(start_r * math.cos(base_angle))
+            y1 = cy + int(start_r * math.sin(base_angle))
+            x2 = cx + int(line_length * math.cos(base_angle))
+            y2 = cy + int(line_length * math.sin(base_angle))
+
+            alpha = int(120 * intensity * pulse)
+            if alpha > 0:
+                draw.line(
+                    [(x1, y1), (x2, y2)],
+                    fill=(*color, alpha),
+                    width=1,
+                )
+
+        result = Image.alpha_composite(result, overlay)
+        return result.convert("RGB")
+

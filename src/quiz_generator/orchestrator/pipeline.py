@@ -43,12 +43,12 @@ class GenerationPipeline:
     def __init__(self, settings: Settings | None = None) -> None:
         self._settings = settings or get_settings()
         self._ai_provider = GeminiProvider(self._settings)
-        
+
         # Proveedor de respaldo gratuito (Groq)
         self._fallback_provider = None
         if getattr(self._settings, "groq_api_key", None):
             self._fallback_provider = GroqProvider(self._settings)
-            
+
         self._audio_engine = AudioEngine(self._settings)
         self._video_engine = VideoEngine(self._settings)
         self._anti_rep = AntiRepetitionEngine(self._settings)
@@ -213,7 +213,7 @@ class GenerationPipeline:
         if self._settings.anti_repeticion.habilitado and self._anti_rep.total_entries > 0:
             context["preguntas_existentes"] = []  # Se podrían cargar del store
 
-        from quiz_generator.core.exceptions import AIRateLimitError, AIProviderError
+        from quiz_generator.core.exceptions import AIProviderError, AIRateLimitError
 
         try:
             quiz = await self._ai_provider.generate_quiz(

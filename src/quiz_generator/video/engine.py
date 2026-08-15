@@ -62,11 +62,11 @@ def _safe_audio_clip(path: str | Path) -> AudioClip:
     try:
         clip = AudioFileClip(str(path))
         fps = getattr(clip, "fps", 44100)
-        
+
         # Leer todo a memoria de forma segura
         audio_array = clip.to_soundarray()
         clip.close()
-        
+
         safe_clip = AudioArrayClip(audio_array, fps=fps)
         return safe_clip
     except Exception as e:
@@ -394,8 +394,13 @@ class VideoEngine:
 
             frame_with_timer = base_scene.copy()
             draw = ImageDraw.Draw(frame_with_timer)
-            # Use dynamic timer position calculated by composer
-            self._composer._draw_premium_timer(draw, time_left, y=self._composer._last_timer_y)
+            # Timer ahora en esquina superior derecha
+            timer_x = self._width - 120
+            self._composer._draw_premium_timer(
+                draw, time_left,
+                y=self._composer._last_timer_y,
+                center_x=timer_x,
+            )
 
             # Accelerating Ken Burns zoom in final seconds for tension
             if time_left <= 3:
@@ -409,27 +414,63 @@ class VideoEngine:
                 zoom_start=1.0, zoom_end=zoom_end,
             )
 
-            # Radial glow pulse around timer for visual drama
-            timer_cx = self._width // 2
-            timer_cy = self._composer._last_timer_y + 60
+            # Radial glow pulse around timer (esquina superior derecha)
+            timer_cy = self._composer._last_timer_y + 50
             glow_color = (255, 40, 40) if time_left <= 3 else (
                 (255, 214, 0) if time_left <= 5 else (108, 92, 231)
             )
-            glow_intensity = 0.6 if time_left <= 3 else 0.3
+            # Frecuencia del glow se ACELERA conforme baja el tiempo (heartbeat)
+            if time_left <= 3:
+                glow_freq = 6.0 + (3 - time_left) * 3  # 6→15 Hz
+                glow_intensity = 0.8
+            elif time_left <= 5:
+                glow_freq = 4.0
+                glow_intensity = 0.5
+            else:
+                glow_freq = 2.5
+                glow_intensity = 0.3
+
             final_frame = VisualEffects.apply_radial_glow_pulse_lazy(
                 final_frame, t,
-                center=(timer_cx, timer_cy),
-                radius=100,
+                center=(timer_x, timer_cy),
+                radius=90,
                 color=glow_color,
-                frequency=3.0 if time_left > 3 else 5.0,
+                frequency=glow_freq,
                 intensity=glow_intensity,
             )
 
+            # Neon border pulse — siempre presente, más intenso al final
+            border_color = glow_color
+            border_intensity = 0.15 if time_left > 5 else (0.35 if time_left > 3 else 0.6)
+            final_frame = VisualEffects.apply_neon_border_pulse_lazy(
+                final_frame, t,
+                color=border_color,
+                frequency=glow_freq * 0.5,
+                intensity=border_intensity,
+            )
+
+            # Chromatic aberration en los últimos 3 segundos
+            if time_left <= 3:
+                aberration_amount = int(3 * (1 - time_left / 3))
+                if aberration_amount > 0:
+                    final_frame = VisualEffects.apply_chromatic_aberration_lazy(
+                        final_frame, offset=aberration_amount,
+                    )
+
+            # Screen shake sutil en los últimos 2 segundos
+            if time_left <= 2:
+                shake_intensity = int(4 * (1 - time_left / 2))
+                if shake_intensity > 0:
+                    final_frame = VisualEffects.apply_shake(
+                        final_frame, intensity=shake_intensity, seed=int(t * 100),
+                    )
+
             # Red urgency tint pulse when timer < 3 seconds
             if time_left <= 3:
-                pulse = abs(math.sin(t * 6)) * 0.06
+                pulse = abs(math.sin(t * 8)) * 0.08
                 red_layer = Image.new("RGB", final_frame.size, (255, 30, 30))
                 final_frame = Image.blend(final_frame, red_layer, pulse)
+
             # Partículas
             final_frame = VisualEffects.apply_particles_lazy(final_frame, t, particles)
             return _pil_to_numpy(final_frame)
@@ -772,12 +813,13 @@ class VideoEngine:
             return video
 
         # Generar música de fondo
-        output_dir = Path(self._settings.assets.directorio_sonidos)
+        style = getattr(music_config, "estilo", "auto")
         music_path = self._music_manager.generate_background_music(
             duration_seconds=total_duration,
-            output_path=output_dir / f"bgm_{int(total_duration)}s.wav",
+            output_path=None,  # Dejar que el manager elija el nombre con el estilo
             volume=music_config.volumen,
             bpm=music_config.bpm,
+            style=style,
         )
 
         try:

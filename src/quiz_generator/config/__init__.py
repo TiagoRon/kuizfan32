@@ -155,6 +155,7 @@ class MusicConfig(BaseSettings):
     habilitada: bool = True
     volumen: float = 0.15
     bpm: int = 125
+    estilo: str = "auto"  # auto | electronico | trap | lofi | epic | reggaeton
     ducking_nivel: float = 0.3
     ducking_attack: float = 0.1
     ducking_release: float = 0.3

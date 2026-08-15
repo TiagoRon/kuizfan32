@@ -102,7 +102,7 @@ class GroqProvider(IAIProvider):
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
-        
+
         # Models to try on Groq
         models_to_try = [
             "llama-3.1-8b-instant",
@@ -111,7 +111,7 @@ class GroqProvider(IAIProvider):
         ]
 
         last_error = None
-        
+
         async with httpx.AsyncClient(timeout=30.0) as client:
             for current_model in models_to_try:
                 payload = {
@@ -124,38 +124,38 @@ class GroqProvider(IAIProvider):
                     "max_tokens": self._settings.ia.max_tokens,
                     "response_format": {"type": "json_object"}
                 }
-                
+
                 try:
                     response = await client.post(
                         self._base_url,
                         headers=headers,
                         json=payload,
                     )
-                    
+
                     if response.status_code == 429:
                         raise AIRateLimitError("Groq")
-                        
+
                     if response.status_code in (401, 403):
                         raise MissingAPIKeyError("Groq", "GROQ_API_KEY")
-                        
+
                     response.raise_for_status()
-                    
+
                     data = response.json()
-                    
+
                     # Token usage
                     if "usage" in data:
                         self._tokens_used += data["usage"].get("total_tokens", 0)
-                        
+
                     choices = data.get("choices", [])
                     if not choices:
                         raise AIInvalidResponseError("Groq", "No hay opciones en la respuesta")
-                        
+
                     content = choices[0].get("message", {}).get("content", "")
                     if not content:
                         raise AIInvalidResponseError("Groq", "Contenido vacío")
-                        
+
                     return content
-                    
+
                 except httpx.HTTPStatusError as e:
                     last_error = e
                     logger.warning("Groq modelo '%s' falló con estado %s", current_model, e.response.status_code)

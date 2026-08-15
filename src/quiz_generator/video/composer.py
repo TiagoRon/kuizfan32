@@ -95,45 +95,120 @@ class SceneComposer:
         return img
 
     def _draw_subtle_pattern(self, draw: ImageDraw.ImageDraw, t: float = 0.0) -> None:
-        """Dibuja un patrón geométrico premium con grid hexagonal y orbs brillantes."""
+        """Dibuja un patrón premium con aurora/nebula, orbs conectados y estrellas."""
         import random
         rng = random.Random(42)
         w, h = self._width, self._height
 
-        # Grid de líneas diagonales sutiles
-        line_color = (255, 255, 255, 8)
-        spacing = 80
+        # === Nebula / Aurora layers ===
+        nebula_colors = [
+            (108, 92, 231, 12),   # Violeta difuso
+            (0, 206, 209, 10),    # Turquesa difuso
+            (255, 105, 180, 8),   # Rosa difuso
+            (80, 60, 200, 10),    # Indigo
+        ]
+        for _ in range(6):
+            nx = rng.randint(-100, w + 100)
+            ny = rng.randint(-100, h + 100)
+            nc = rng.choice(nebula_colors)
+            for radius in range(180, 0, -8):
+                alpha = int(nc[3] * (1 - radius / 180) ** 0.5)
+                if alpha > 0:
+                    draw.ellipse(
+                        (nx - radius, ny - radius, nx + radius, ny + radius),
+                        fill=(nc[0], nc[1], nc[2], alpha),
+                    )
+
+        # === Grid de líneas diagonales cruzadas (más tenues) ===
+        line_color = (255, 255, 255, 6)
+        spacing = 90
         for x in range(-h, w + h, spacing):
             draw.line([(x, 0), (x - h // 2, h)], fill=line_color, width=1)
         for x in range(-h, w + h, spacing):
             draw.line([(x, 0), (x + h // 2, h)], fill=line_color, width=1)
 
-        # Orbs de luz (glow suave)
-        for _ in range(8):
-            ox = rng.randint(50, w - 50)
-            oy = rng.randint(50, h - 50)
+        # === Orbs de luz grandes con halo ===
+        orbs = []
+        for _ in range(10):
+            ox = rng.randint(30, w - 30)
+            oy = rng.randint(30, h - 30)
             orb_color = rng.choice([
                 (108, 92, 231),   # Violeta
                 (0, 206, 209),    # Turquesa
                 (255, 105, 180),  # Rosa
+                (160, 120, 255),  # Lila
+                (0, 200, 150),    # Esmeralda
             ])
-            # Glow grande difuso
-            for radius in range(60, 0, -5):
-                alpha = int(6 * (1 - radius / 60))
+            orb_size = rng.randint(35, 75)
+            orbs.append((ox, oy, orb_color, orb_size))
+
+            # Halo exterior difuso
+            for radius in range(orb_size + 30, orb_size, -3):
+                alpha = int(4 * (1 - (radius - orb_size) / 30))
                 draw.ellipse(
                     (ox - radius, oy - radius, ox + radius, oy + radius),
                     fill=(*orb_color, alpha),
                 )
+            # Orb principal con glow
+            for radius in range(orb_size, 0, -4):
+                alpha = int(10 * (1 - radius / orb_size) ** 0.7)
+                draw.ellipse(
+                    (ox - radius, oy - radius, ox + radius, oy + radius),
+                    fill=(*orb_color, alpha),
+                )
+            # Núcleo brillante
+            core_r = max(3, orb_size // 5)
+            draw.ellipse(
+                (ox - core_r, oy - core_r, ox + core_r, oy + core_r),
+                fill=(*orb_color, 35),
+            )
 
-        # Puntos de estrella pequeños
-        for _ in range(60):
+        # === Líneas de energía entre orbs cercanos ===
+        for i, (x1, y1, c1, _) in enumerate(orbs):
+            for x2, y2, _, _ in orbs[i + 1:]:
+                dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                if dist < 500:  # Solo conectar orbs cercanos
+                    line_alpha = int(8 * (1 - dist / 500))
+                    if line_alpha > 0:
+                        draw.line(
+                            [(x1, y1), (x2, y2)],
+                            fill=(*c1, line_alpha),
+                            width=1,
+                        )
+
+        # === Estrellas con variación de brillo (twinkle) ===
+        for _ in range(100):
             x = rng.randint(0, w)
             y = rng.randint(0, h)
             size = rng.randint(1, 3)
-            alpha = rng.randint(20, 50)
+            # Variar alpha para efecto twinkle
+            base_alpha = rng.randint(15, 70)
             draw.ellipse(
                 (x - size, y - size, x + size, y + size),
-                fill=(255, 255, 255, alpha),
+                fill=(255, 255, 255, base_alpha),
+            )
+            # Cruz de brillo para estrellas más grandes
+            if size >= 2 and base_alpha > 40:
+                cross_len = size + rng.randint(2, 5)
+                cross_alpha = base_alpha // 3
+                draw.line(
+                    [(x - cross_len, y), (x + cross_len, y)],
+                    fill=(255, 255, 255, cross_alpha), width=1,
+                )
+                draw.line(
+                    [(x, y - cross_len), (x, y + cross_len)],
+                    fill=(255, 255, 255, cross_alpha), width=1,
+                )
+
+        # === Triángulos geométricos sutiles ===
+        for _ in range(8):
+            tx = rng.randint(50, w - 50)
+            ty = rng.randint(50, h - 50)
+            ts = rng.randint(10, 25)
+            tri_alpha = rng.randint(8, 20)
+            draw.polygon(
+                [(tx, ty - ts), (tx + ts, ty + ts), (tx - ts, ty + ts)],
+                outline=(255, 255, 255, tri_alpha),
             )
 
     def _draw_text_with_shadow(
@@ -552,10 +627,9 @@ class SceneComposer:
         """Renderiza la escena de una pregunta — diseño premium con zonas fijas.
 
         Layout por zonas proporcionales (para 1920px de alto):
-        - Zona superior  (0-15%):   barra de progreso + badge pregunta
-        - Zona pregunta  (15-45%):  texto de la pregunta (centrado vertical)
-        - Zona timer     (45-55%):  timer circular (posición fija)
-        - Zona opciones  (55-95%):  cards de respuesta distribuidas uniformemente
+        - Zona superior  (0-12%):   barra de progreso + badge pregunta + TIMER arriba derecha
+        - Zona pregunta  (12-42%):  texto de la pregunta (centrado vertical)
+        - Zona opciones  (42-95%):  cards de respuesta distribuidas uniformemente
         """
         img = self._create_gradient_background(
             color_top=self._colors.fondo,
@@ -565,26 +639,25 @@ class SceneComposer:
         draw = ImageDraw.Draw(img)
 
         # =====================================================================
-        # Zonas proporcionales fijas (no se solapan nunca)
+        # Zonas proporcionales fijas (timer ahora en zona superior derecha)
         # =====================================================================
         zone_top_start = 80
-        zone_question_start = int(self._height * 0.15)
-        zone_timer_start = int(self._height * 0.44)
-        zone_options_start = int(self._height * 0.54)
+        zone_question_start = int(self._height * 0.12)
+        zone_options_start = int(self._height * 0.42)
         zone_options_end = int(self._height * 0.94)
 
-        # === ZONA SUPERIOR: Barra de progreso + Badge ===
+        # === ZONA SUPERIOR: Barra de progreso + Badge + Timer ===
         y_cursor = zone_top_start
         self._draw_premium_progress_bar(draw, question_number, total_questions, y=y_cursor)
         y_cursor += 50
 
-        # Badge con número de pregunta
+        # Badge con número de pregunta (centrado a la izquierda para dejar espacio al timer)
         badge_font = self._get_font(self._fonts_config.principal, 20)
         badge_text = f"PREGUNTA {question_number}/{total_questions}"
         bbox = draw.textbbox((0, 0), badge_text, font=badge_font)
         badge_w = bbox[2] - bbox[0]
 
-        badge_x = (self._width - badge_w - 40) // 2
+        badge_x = 50  # Alineado a la izquierda
         draw.rounded_rectangle(
             (badge_x, y_cursor, badge_x + badge_w + 40, y_cursor + 36),
             radius=18,
@@ -596,6 +669,12 @@ class SceneComposer:
             fill=(255, 255, 255, 255),
             font=badge_font,
         )
+
+        # Timer en la esquina superior derecha
+        self._last_timer_y = y_cursor - 10
+        if timer_value is not None:
+            timer_x = self._width - 120  # Esquina derecha
+            self._draw_premium_timer(draw, timer_value, y=y_cursor - 10, center_x=timer_x)
 
         # === ZONA PREGUNTA: Texto centrado en la zona ===
         question_zone_y = zone_question_start
@@ -633,12 +712,7 @@ class SceneComposer:
             max_width=self._width - 100,
         )
 
-        # === ZONA TIMER: Posición fija, nunca se solapa ===
-        # Store timer Y position for countdown clip to use dynamically
-        self._last_timer_y = zone_timer_start
-
-        if timer_value is not None:
-            self._draw_premium_timer(draw, timer_value, y=zone_timer_start)
+        # Timer ya se dibuja en la zona superior (arriba), no se repite aquí
 
         # === ZONA OPCIONES: Cards distribuidas uniformemente ===
         answer_font = self._get_font(
@@ -948,11 +1022,12 @@ class SceneComposer:
         draw: ImageDraw.ImageDraw,
         value: float,
         y: int,
+        center_x: int | None = None,
     ) -> None:
-        """Dibuja el temporizador circular premium — centrado, con glow."""
+        """Dibuja el temporizador estilo reloj premium — con tick marks, glow y urgencia."""
         timer_font = self._get_font(
             self._fonts_config.principal,
-            self._fonts_config.tamanio_timer,
+            52,  # Tamaño ajustado para el timer más grande
         )
 
         display_value = max(1, math.ceil(value))
@@ -964,55 +1039,118 @@ class SceneComposer:
         else:
             color = self._hex_to_rgb(self._colors.primario)
 
-        center_x = self._width // 2
-        radius = 50  # Más compacto para no solaparse
-        center_y = y + radius
+        if center_x is None:
+            center_x = self._width // 2
+        radius = 42  # Radio compacto para esquina superior
+        center_y = y + radius + 5
 
-        # Glow del arco (halo difuso)
-        for gi in range(12, 0, -2):
-            glow_alpha = int(20 * (1 - gi / 12))
+        # === Glow exterior pulsante ===
+        # Más intenso cuando queda poco tiempo
+        glow_intensity = 30 if display_value <= 3 else 15
+        for gi in range(18, 0, -2):
+            glow_alpha = int(glow_intensity * (1 - gi / 18))
             glow_r = radius + gi
-            draw.arc(
+            draw.ellipse(
                 (center_x - glow_r, center_y - glow_r,
                  center_x + glow_r, center_y + glow_r),
-                0, 360,
                 fill=(*color, glow_alpha),
-                width=3,
             )
 
-        # Fondo del timer (anillo oscuro)
-        draw.arc(
+        # === Fondo circular oscuro ===
+        draw.ellipse(
             (center_x - radius, center_y - radius,
              center_x + radius, center_y + radius),
-            0, 360,
-            fill=(45, 45, 58, 200),
-            width=8,
+            fill=(15, 15, 25, 230),
         )
 
-        # Arco de progreso
+        # === Tick marks estilo reloj (12 marcas) ===
+        for i in range(12):
+            angle = math.radians(i * 30 - 90)
+            inner_r = radius - 8
+            outer_r = radius - 3
+            # Marcas más gruesas cada 3 (como un reloj: 12, 3, 6, 9)
+            tick_w = 2 if i % 3 == 0 else 1
+            tick_alpha = 180 if i % 3 == 0 else 80
+            x1 = center_x + int(inner_r * math.cos(angle))
+            y1 = center_y + int(inner_r * math.sin(angle))
+            x2 = center_x + int(outer_r * math.cos(angle))
+            y2 = center_y + int(outer_r * math.sin(angle))
+            draw.line(
+                [(x1, y1), (x2, y2)],
+                fill=(255, 255, 255, tick_alpha),
+                width=tick_w,
+            )
+
+        # === Anillo track oscuro ===
+        draw.arc(
+            (center_x - radius + 4, center_y - radius + 4,
+             center_x + radius - 4, center_y + radius - 4),
+            0, 360,
+            fill=(60, 60, 80, 150),
+            width=6,
+        )
+
+        # === Arco de progreso (se consume como reloj) ===
         progress = max(0.0, min(1.0, value / 10.0))
         arc_angle = int(360 * progress)
         if arc_angle > 0:
             draw.arc(
-                (center_x - radius, center_y - radius,
-                 center_x + radius, center_y + radius),
+                (center_x - radius + 4, center_y - radius + 4,
+                 center_x + radius - 4, center_y + radius - 4),
                 -90, -90 + arc_angle,
                 fill=(*color, 255),
-                width=8,
+                width=7,
             )
 
-        # Número centrado correctamente
+            # Punto brillante en la punta del arco
+            tip_angle = math.radians(-90 + arc_angle)
+            tip_r = radius - 4
+            tip_x = center_x + int(tip_r * math.cos(tip_angle))
+            tip_y = center_y + int(tip_r * math.sin(tip_angle))
+            for gr in range(8, 0, -2):
+                ga = int(50 * (1 - gr / 8))
+                draw.ellipse(
+                    (tip_x - gr, tip_y - gr, tip_x + gr, tip_y + gr),
+                    fill=(*color, ga),
+                )
+            draw.ellipse(
+                (tip_x - 3, tip_y - 3, tip_x + 3, tip_y + 3),
+                fill=(255, 255, 255, 200),
+            )
+
+        # === Anillo interior decorativo ===
+        inner_ring_r = radius - 14
+        draw.arc(
+            (center_x - inner_ring_r, center_y - inner_ring_r,
+             center_x + inner_ring_r, center_y + inner_ring_r),
+            0, 360,
+            fill=(255, 255, 255, 15),
+            width=1,
+        )
+
+        # === Número centrado ===
         text = str(display_value)
         bbox = draw.textbbox((0, 0), text, font=timer_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
-        # Compensar offset de ascender de la fuente
         text_offset_y = bbox[1]
         draw.text(
             (center_x - text_w // 2, center_y - text_h // 2 - text_offset_y),
             text,
             fill=(*color, 255),
             font=timer_font,
+        )
+
+        # === Label "seg" debajo del número ===
+        label_font = self._get_font(self._fonts_config.secundaria, 12)
+        label = "seg"
+        lbbox = draw.textbbox((0, 0), label, font=label_font)
+        lw = lbbox[2] - lbbox[0]
+        draw.text(
+            (center_x - lw // 2, center_y + text_h // 2 - 2),
+            label,
+            fill=(200, 200, 200, 150),
+            font=label_font,
         )
 
     def _apply_vignette_overlay(

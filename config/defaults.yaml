@@ -96,6 +96,7 @@ video:
     habilitada: true
     volumen: 0.15                 # Volumen relativo a la voz (0.0 - 1.0)
     bpm: 125                     # Tempo en BPM
+    estilo: "auto"               # auto | electronico | trap | lofi | epic | reggaeton
     ducking_nivel: 0.3            # Nivel de reducción cuando hay voz
     ducking_attack: 0.1           # Tiempo de fade-in del ducking
     ducking_release: 0.3          # Tiempo de fade-out del ducking
