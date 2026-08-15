@@ -259,11 +259,18 @@ class GeminiProvider(IAIProvider):
                 )
                 for a in q_data.get("respuestas", [])
             ]
+            # Parse dificultad de forma segura
+            raw_diff = q_data.get("dificultad")
+            try:
+                diff_val = Difficulty(raw_diff) if raw_diff else difficulty
+            except (ValueError, KeyError):
+                diff_val = difficulty
+
             preguntas.append(
                 Question(
                     texto=q_data.get("texto", ""),
                     respuestas=respuestas,
-                    dificultad=Difficulty(q_data.get("dificultad", difficulty.value)),
+                    dificultad=diff_val,
                     tiempo_segundos=q_data.get("tiempo_segundos", 10),
                     curiosidad=q_data.get("curiosidad"),
                     imagen_url=q_data.get("imagen_url"),

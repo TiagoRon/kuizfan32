@@ -1,5 +1,7 @@
 """Enumeraciones del dominio para el generador de quizzes virales."""
 
+from __future__ import annotations
+
 from enum import StrEnum, auto
 
 
@@ -48,6 +50,20 @@ class QuizType(StrEnum):
     RIDDLE = auto()
     OPTICAL_ILLUSION = auto()
 
+    @classmethod
+    def _missing_(cls, value: object) -> QuizType | None:
+        if isinstance(value, str):
+            normalized = (
+                value.lower()
+                .strip()
+                .replace(" ", "_")
+                .replace("-", "_")
+            )
+            for member in cls:
+                if member.value == normalized or member.name.lower() == normalized:
+                    return member
+        return None
+
 
 class Difficulty(StrEnum):
     """Niveles de dificultad para las preguntas del quiz."""
@@ -56,6 +72,31 @@ class Difficulty(StrEnum):
     MEDIO = "medio"
     DIFICIL = "dificil"
     IMPOSIBLE = "imposible"
+
+    @classmethod
+    def _missing_(cls, value: object) -> Difficulty | None:
+        if isinstance(value, str):
+            normalized = (
+                value.lower()
+                .strip()
+                .replace("á", "a")
+                .replace("é", "e")
+                .replace("í", "i")
+                .replace("ó", "o")
+                .replace("ú", "u")
+            )
+            for member in cls:
+                if member.value == normalized or member.name.lower() == normalized:
+                    return member
+            aliases = {
+                "easy": cls.FACIL,
+                "medium": cls.MEDIO,
+                "hard": cls.DIFICIL,
+                "impossible": cls.IMPOSIBLE,
+            }
+            if normalized in aliases:
+                return aliases[normalized]
+        return None
 
 
 class Emotion(StrEnum):
@@ -89,6 +130,23 @@ class ViralTrigger(StrEnum):
     DESAFIO = auto()           # "¿Te atreves?"
     IDENTIDAD = auto()         # "Solo los verdaderos fans..."
     URGENCIA = auto()          # Temporizadores, presión de tiempo
+
+    @classmethod
+    def _missing_(cls, value: object) -> ViralTrigger | None:
+        if isinstance(value, str):
+            normalized = (
+                value.lower()
+                .strip()
+                .replace("á", "a")
+                .replace("é", "e")
+                .replace("í", "i")
+                .replace("ó", "o")
+                .replace("ú", "u")
+            )
+            for member in cls:
+                if member.value == normalized or member.name.lower() == normalized:
+                    return member
+        return None
 
 
 class ExportFormat(StrEnum):

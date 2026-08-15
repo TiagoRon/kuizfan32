@@ -23,9 +23,22 @@ class TestEnums:
         assert Difficulty.FACIL.value == "facil"
         assert Difficulty.IMPOSIBLE.value == "imposible"
 
+    def test_difficulty_accents_and_case(self):
+        """Difficulty maneja tildes, mayúsculas y variantes en inglés."""
+        assert Difficulty("fácil") == Difficulty.FACIL
+        assert Difficulty("difícil") == Difficulty.DIFICIL
+        assert Difficulty("FÁCIL") == Difficulty.FACIL
+        assert Difficulty("DIFÍCIL") == Difficulty.DIFICIL
+        assert Difficulty("facil") == Difficulty.FACIL
+        assert Difficulty("easy") == Difficulty.FACIL
+        assert Difficulty("hard") == Difficulty.DIFICIL
+        assert Difficulty("impossible") == Difficulty.IMPOSIBLE
+
     def test_viral_trigger_values(self):
-        """Los disparadores virales existen."""
+        """Los disparadores virales existen y toleran tildes."""
         assert len(ViralTrigger) >= 8
+        assert ViralTrigger("desafío") == ViralTrigger.DESAFIO
+        assert ViralTrigger("curiosidad") == ViralTrigger.CURIOSIDAD
 
 
 class TestModels:

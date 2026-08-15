@@ -301,9 +301,19 @@ async def run_generation(
     settings = get_settings()
     pipeline = GenerationPipeline(settings)
 
+    try:
+        parsed_type = QuizType(quiz_type)
+    except ValueError:
+        parsed_type = QuizType.TRIVIA
+
+    try:
+        parsed_diff = Difficulty(difficulty)
+    except ValueError:
+        parsed_diff = Difficulty.MEDIO
+
     request = GenerationRequest(
-        tipo=QuizType(quiz_type),
-        dificultad=Difficulty(difficulty),
+        tipo=parsed_type,
+        dificultad=parsed_diff,
         num_preguntas=num_questions,
         tema=topic,
         idioma=language,
