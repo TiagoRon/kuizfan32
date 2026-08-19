@@ -100,13 +100,16 @@ class GenerationPipeline:
             # Pasos 2 y 3: Generar quiz y verificar duplicados con reintentos
             max_retries = 3
             quiz = None
+            rejected_questions: list[str] = []
             for attempt in range(1, max_retries + 1):
                 try:
                     self._report_progress(
                         PipelineStep.GENERAR_QUIZ, 0.1,
                         f"Generando quiz con IA (Intento {attempt}/{max_retries})...",
                     )
-                    quiz = await self._generate_quiz(request, plugin)
+                    quiz = await self._generate_quiz(
+                        request, plugin, rejected_questions=rejected_questions
+                    )
 
                     self._report_progress(
                         PipelineStep.VERIFICAR_DUPLICADOS, 0.3,
@@ -118,6 +121,14 @@ class GenerationPipeline:
                     break
                 except DuplicateContentError as e:
                     logger.warning("Contenido duplicado detectado en intento %d: %s", attempt, e)
+                    # Registrar las preguntas rechazadas para que el siguiente intento no las repita
+                    if quiz:
+                        for p in quiz.preguntas:
+                            if p.texto not in rejected_questions:
+                                rejected_questions.append(p.texto)
+                    elif str(e) not in rejected_questions:
+                        rejected_questions.append(str(e))
+
                     if attempt == max_retries:
                         raise PipelineError(
                             PipelineStep.VERIFICAR_DUPLICADOS.value,
@@ -203,6 +214,7 @@ class GenerationPipeline:
         self,
         request: GenerationRequest,
         plugin: Any,
+        rejected_questions: list[str] | None = None,
     ) -> Quiz:
         """Genera el quiz usando el proveedor de IA y el plugin."""
         context = {
@@ -210,8 +222,21 @@ class GenerationPipeline:
         }
 
         # Si anti-repetición está activo, incluir preguntas existentes
+        preguntas_excluidas: list[str] = []
         if self._settings.anti_repeticion.habilitado and self._anti_rep.total_entries > 0:
-            context["preguntas_existentes"] = []  # Se podrían cargar del store
+            if hasattr(self._anti_rep, "get_existing_texts"):
+                preguntas_excluidas.extend(self._anti_rep.get_existing_texts(limit=50))
+            elif hasattr(self._anti_rep, "_texts"):
+                preguntas_excluidas.extend(self._anti_rep._texts[-50:])
+
+        if rejected_questions:
+            preguntas_excluidas.extend(rejected_questions)
+
+        if preguntas_excluidas:
+            seen: set[str] = set()
+            context["preguntas_existentes"] = [
+                q for q in preguntas_excluidas if not (q in seen or seen.add(q))
+            ]
 
         from quiz_generator.core.exceptions import AIProviderError, AIRateLimitError
 

@@ -174,3 +174,10 @@ class AntiRepetitionEngine(IAntiRepetitionEngine):
     def total_entries(self) -> int:
         """Número total de textos registrados."""
         return len(self._texts)
+
+    def get_existing_texts(self, limit: int = 50) -> list[str]:
+        """Retorna los textos existentes más recientes para incluirlos en el prompt."""
+        self._ensure_loaded()
+        if not self._texts:
+            return []
+        return self._texts[-limit:]
