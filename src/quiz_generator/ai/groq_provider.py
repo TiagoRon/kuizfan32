@@ -147,7 +147,7 @@ class GroqProvider(IAIProvider):
         errors_log: list[str] = []
         last_retry_after = 5
 
-        async with httpx.AsyncClient(timeout=45.0) as client:
+        async with httpx.AsyncClient(timeout=60.0) as client:
             models_to_try = await self._get_available_models(client, headers)
 
             for current_model in models_to_try:
@@ -166,7 +166,7 @@ class GroqProvider(IAIProvider):
                         {"role": "user", "content": prompt},
                     ],
                     "temperature": self._settings.ia.temperatura,
-                    "max_tokens": min(self._settings.ia.max_tokens, 4096),
+                    "max_tokens": 8192,
                 }
                 if supports_json_object:
                     payload["response_format"] = {"type": "json_object"}
@@ -204,7 +204,15 @@ class GroqProvider(IAIProvider):
                     if not content:
                         raise AIInvalidResponseError("Groq", "Contenido vacío")
 
-                    return content
+                    # Validar que el JSON sea parseable antes de aceptar esta respuesta
+                    try:
+                        self._parse_json_response(content)
+                        return content
+                    except Exception as json_err:
+                        err_msg = f"{current_model}: JSON incompleto/inválido ({json_err})"
+                        errors_log.append(err_msg)
+                        logger.warning("Groq modelo '%s' retornó JSON inválido. Probando siguiente modelo...", current_model)
+                        continue
 
                 except httpx.HTTPStatusError as e:
                     error_body = e.response.text
@@ -230,13 +238,43 @@ class GroqProvider(IAIProvider):
         raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron:\n" + "\n".join(errors_log))
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
-        """Parsea la respuesta JSON de Groq."""
+        """Parsea y repara la respuesta JSON de Groq si es necesario."""
         clean = text.strip()
         if clean.startswith("```"):
             lines = clean.split("\n")
             lines = [line for line in lines if not line.strip().startswith("```")]
-            clean = "\n".join(lines)
+            clean = "\n".join(lines).strip()
 
+        # 1. Intento directo
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+        # 2. Extraer bloque {...}
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(clean[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # 3. Intentar reparar JSON truncado
+        if start != -1:
+            candidate = clean[start:]
+            if candidate.count('"') % 2 != 0:
+                candidate += '"'
+            open_braces = candidate.count("{") - candidate.count("}")
+            open_brackets = candidate.count("[") - candidate.count("]")
+            candidate += "]" * max(0, open_brackets)
+            candidate += "}" * max(0, open_braces)
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
+
+        # Si falla todo, lanzar error descriptivo
         try:
             return json.loads(clean)
         except json.JSONDecodeError as e:

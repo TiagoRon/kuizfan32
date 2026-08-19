@@ -122,7 +122,7 @@ class GeminiProvider(IAIProvider):
             "gemini-2.0-flash",
             "gemini-2.0-flash-lite",
             "gemini-1.5-flash",
-            "gemini-1.5-pro",
+            "gemini-1.5-flash-8b",
         ]
 
         # Eliminar duplicados manteniendo el orden
@@ -138,7 +138,7 @@ class GeminiProvider(IAIProvider):
                     contents=prompt,
                     config=genai_types.GenerateContentConfig(
                         temperature=self._settings.ia.temperatura,
-                        max_output_tokens=self._settings.ia.max_tokens,
+                        max_output_tokens=8192,
                         response_mime_type="application/json",
                     ),
                 )
@@ -181,15 +181,43 @@ class GeminiProvider(IAIProvider):
         raise AIProviderError("Gemini", f"Todos los modelos de Gemini fallaron. Último error: {last_error}")
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
-        """Parsea la respuesta JSON de Gemini, manejando bloques de código."""
+        """Parsea y repara la respuesta JSON de Gemini si es necesario."""
         clean = text.strip()
 
         # Remover bloques de código markdown si los hay
         if clean.startswith("```"):
             lines = clean.split("\n")
-            # Remover primera y última línea (```json y ```)
             lines = [line for line in lines if not line.strip().startswith("```")]
-            clean = "\n".join(lines)
+            clean = "\n".join(lines).strip()
+
+        # 1. Intento directo
+        try:
+            return json.loads(clean)
+        except json.JSONDecodeError:
+            pass
+
+        # 2. Extraer bloque {...}
+        start = clean.find("{")
+        end = clean.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                return json.loads(clean[start : end + 1])
+            except json.JSONDecodeError:
+                pass
+
+        # 3. Intentar reparar JSON truncado
+        if start != -1:
+            candidate = clean[start:]
+            if candidate.count('"') % 2 != 0:
+                candidate += '"'
+            open_braces = candidate.count("{") - candidate.count("}")
+            open_brackets = candidate.count("[") - candidate.count("]")
+            candidate += "]" * max(0, open_brackets)
+            candidate += "}" * max(0, open_braces)
+            try:
+                return json.loads(candidate)
+            except json.JSONDecodeError:
+                pass
 
         try:
             return json.loads(clean)
