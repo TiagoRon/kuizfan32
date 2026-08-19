@@ -115,18 +115,19 @@ class GeminiProvider(IAIProvider):
 
         Incluye reintentos automáticos y manejo de errores con fallback entre modelos.
         """
-        # Lista de modelos a intentar en orden, priorizando los que pidió el usuario
+        # Lista de modelos a intentar en orden de prioridad
         models_to_try = [
-            model if model else "gemini-2.5-flash",
-            "gemini-3.1-flash-lite",
-            "gemini-3.5-flash",
+            model if model else self._model,
+            self._fallback_model,
             "gemini-2.0-flash",
+            "gemini-2.0-flash-lite",
             "gemini-1.5-flash",
+            "gemini-1.5-pro",
         ]
 
         # Eliminar duplicados manteniendo el orden
         seen = set()
-        models_to_try = [m for m in models_to_try if not (m in seen or seen.add(m))]
+        models_to_try = [m for m in models_to_try if m and not (m in seen or seen.add(m))]
 
         last_error = None
 
@@ -158,19 +159,21 @@ class GeminiProvider(IAIProvider):
                 error_str = str(e).lower()
                 last_error = e
 
-                # Si es un error de Rate Limit, lanzarlo para que Tenacity reintente
-                if "rate" in error_str or "quota" in error_str or "429" in error_str:
+                # Si es un error de Rate Limit / Cuota agotada, lanzar para reintento o fallback
+                if "rate" in error_str or "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
+                    logger.warning("Gemini RateLimit/Quota alcanzado en '%s': %s", current_model, e)
                     raise AIRateLimitError("Gemini") from e
 
                 # Error fatal de API Key
-                if "api key" in error_str or "401" in error_str or "403" in error_str:
+                if "api key" in error_str or "401" in error_str or "403" in error_str or "permission_denied" in error_str:
+                    logger.error("Error de autenticación con GEMINI_API_KEY: %s", e)
                     raise MissingAPIKeyError("Gemini", "GEMINI_API_KEY") from e
 
                 # Si el modelo no existe o falla, intentar con el siguiente
-                logger.warning("El modelo '%s' falló o no está disponible. Intentando con el siguiente... (Error: %s)", current_model, e)
+                logger.warning("El modelo '%s' de Gemini falló. Probando siguiente modelo... (Error: %s)", current_model, e)
                 continue
 
-        raise AIProviderError("Gemini", f"Todos los modelos fallaron. Último error: {last_error}")
+        raise AIProviderError("Gemini", f"Todos los modelos de Gemini fallaron. Último error: {last_error}")
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
         """Parsea la respuesta JSON de Gemini, manejando bloques de código."""

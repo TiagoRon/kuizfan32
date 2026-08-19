@@ -103,69 +103,80 @@ class GroqProvider(IAIProvider):
             "Content-Type": "application/json",
         }
 
-        # Models to try on Groq
+        # Models to try on Groq (current active models)
         models_to_try = [
+            "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "llama-3.1-70b-versatile",
-            "mixtral-8x7b-32768",
+            "llama3-70b-8192",
+            "llama3-8b-8192",
+            "gemma2-9b-it",
+            "qwen-2.5-32b",
+            "deepseek-r1-distill-llama-70b",
         ]
 
         last_error = None
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             for current_model in models_to_try:
-                payload = {
-                    "model": current_model,
-                    "messages": [
-                        {"role": "system", "content": "You are a professional quiz generator. You MUST ONLY respond with a valid JSON object. No markdown formatting, no explanations."},
-                        {"role": "user", "content": prompt}
-                    ],
-                    "temperature": self._settings.ia.temperatura,
-                    "max_tokens": self._settings.ia.max_tokens,
-                    "response_format": {"type": "json_object"}
-                }
+                # Probar primero con response_format json_object, si falla probar estándar
+                for use_json_format in (True, False):
+                    payload: dict[str, Any] = {
+                        "model": current_model,
+                        "messages": [
+                            {"role": "system", "content": "You are a professional quiz generator. You MUST ONLY respond with a valid JSON object. No markdown formatting, no explanations."},
+                            {"role": "user", "content": prompt},
+                        ],
+                        "temperature": self._settings.ia.temperatura,
+                        "max_tokens": self._settings.ia.max_tokens,
+                    }
+                    if use_json_format:
+                        payload["response_format"] = {"type": "json_object"}
 
-                try:
-                    response = await client.post(
-                        self._base_url,
-                        headers=headers,
-                        json=payload,
-                    )
+                    try:
+                        response = await client.post(
+                            self._base_url,
+                            headers=headers,
+                            json=payload,
+                        )
 
-                    if response.status_code == 429:
-                        raise AIRateLimitError("Groq")
+                        if response.status_code == 429:
+                            raise AIRateLimitError("Groq")
 
-                    if response.status_code in (401, 403):
-                        raise MissingAPIKeyError("Groq", "GROQ_API_KEY")
+                        if response.status_code in (401, 403):
+                            raise MissingAPIKeyError("Groq", "GROQ_API_KEY")
 
-                    response.raise_for_status()
+                        response.raise_for_status()
 
-                    data = response.json()
+                        data = response.json()
 
-                    # Token usage
-                    if "usage" in data:
-                        self._tokens_used += data["usage"].get("total_tokens", 0)
+                        # Token usage
+                        if "usage" in data:
+                            self._tokens_used += data["usage"].get("total_tokens", 0)
 
-                    choices = data.get("choices", [])
-                    if not choices:
-                        raise AIInvalidResponseError("Groq", "No hay opciones en la respuesta")
+                        choices = data.get("choices", [])
+                        if not choices:
+                            raise AIInvalidResponseError("Groq", "No hay opciones en la respuesta")
 
-                    content = choices[0].get("message", {}).get("content", "")
-                    if not content:
-                        raise AIInvalidResponseError("Groq", "Contenido vacío")
+                        content = choices[0].get("message", {}).get("content", "")
+                        if not content:
+                            raise AIInvalidResponseError("Groq", "Contenido vacío")
 
-                    return content
+                        return content
 
-                except httpx.HTTPStatusError as e:
-                    last_error = e
-                    logger.warning("Groq modelo '%s' falló con estado %s", current_model, e.response.status_code)
-                    if e.response.status_code == 429:
-                        raise AIRateLimitError("Groq") from e
-                    continue
-                except httpx.RequestError as e:
-                    last_error = e
-                    logger.warning("Error de red con Groq modelo '%s': %s", current_model, e)
-                    continue
+                    except httpx.HTTPStatusError as e:
+                        error_body = e.response.text
+                        last_error = f"HTTP {e.response.status_code} en {current_model}: {error_body}"
+                        logger.warning("Groq modelo '%s' (json_mode=%s) falló: %s", current_model, use_json_format, last_error)
+                        if e.response.status_code == 429:
+                            raise AIRateLimitError("Groq") from e
+                        # Si es 400 y estábamos usando json_format, intentamos sin json_format antes de cambiar de modelo
+                        if e.response.status_code == 400 and use_json_format:
+                            continue
+                        break
+                    except httpx.RequestError as e:
+                        last_error = e
+                        logger.warning("Error de red con Groq modelo '%s': %s", current_model, e)
+                        break
 
         raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron. Último error: {last_error}")
 
