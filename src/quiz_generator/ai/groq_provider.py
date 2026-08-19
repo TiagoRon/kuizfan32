@@ -6,6 +6,7 @@ usando httpx, solicitando siempre respuestas en formato JSON.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from typing import Any
@@ -93,7 +94,7 @@ class GroqProvider(IAIProvider):
     async def _get_available_models(
         self, client: httpx.AsyncClient, headers: dict[str, str]
     ) -> list[str]:
-        """Consulta dinámicamente los modelos activos disponibles para esta clave en Groq."""
+        """Consulta dinámicamente los modelos de texto activos disponibles en Groq."""
         try:
             resp = await client.get(
                 "https://api.groq.com/openai/v1/models",
@@ -103,33 +104,37 @@ class GroqProvider(IAIProvider):
             if resp.status_code == 200:
                 data = resp.json()
                 raw_models = data.get("data", [])
+                excluded_keywords = (
+                    "whisper", "tts", "guard", "vision", "embed", "prompt-guard",
+                    "orpheus", "canopylabs", "audio", "speech", "distil-whisper",
+                )
                 models = [
                     m["id"]
                     for m in raw_models
                     if isinstance(m, dict)
                     and "id" in m
                     and not m.get("deprecated", False)
-                    and not any(x in m["id"] for x in ("whisper", "tts", "guard", "vision", "embed", "prompt-guard"))
+                    and not any(x in m["id"].lower() for x in excluded_keywords)
                 ]
                 if models:
-                    priority = ["llama-3.3-70b", "llama-3.1-8b", "llama3", "qwen", "mistral", "gemma"]
+                    priority = ["llama-3.3", "llama-3.1", "compound", "qwen", "allam", "mistral", "gemma"]
                     def score(m_id: str) -> int:
                         for i, p in enumerate(priority):
-                            if p in m_id:
+                            if p in m_id.lower():
                                 return i
                         return 99
                     models.sort(key=score)
-                    logger.info("Modelos activos detectados en Groq: %s", models[:5])
+                    logger.info("Modelos de texto activos detectados en Groq: %s", models)
                     return models
         except Exception as e:
             logger.warning("No se pudo obtener lista dinámica de modelos de Groq: %s", e)
 
-        return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+        return ["groq/compound", "groq/compound-mini", "qwen/qwen3.6-27b", "llama-3.3-70b-versatile"]
 
     @retry(
         retry=retry_if_exception_type(AIProviderError),
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        wait=wait_exponential(multiplier=2, min=5, max=30),
         reraise=True,
     )
     async def _call_groq(self, prompt: str) -> str:
@@ -140,72 +145,87 @@ class GroqProvider(IAIProvider):
         }
 
         errors_log: list[str] = []
+        last_retry_after = 5
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             models_to_try = await self._get_available_models(client, headers)
 
             for current_model in models_to_try:
-                # Probar primero con response_format json_object, si falla probar estándar
-                for use_json_format in (True, False):
-                    payload: dict[str, Any] = {
-                        "model": current_model,
-                        "messages": [
-                            {"role": "system", "content": "You are a professional quiz generator. You MUST ONLY respond with a valid JSON object. No markdown formatting, no explanations."},
-                            {"role": "user", "content": prompt},
-                        ],
-                        "temperature": self._settings.ia.temperatura,
-                        "max_tokens": self._settings.ia.max_tokens,
-                    }
-                    if use_json_format:
-                        payload["response_format"] = {"type": "json_object"}
+                supports_json_object = current_model.startswith("llama-3")
+                payload: dict[str, Any] = {
+                    "model": current_model,
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": (
+                                "You are a professional quiz generator. "
+                                "You MUST ONLY respond with a single valid JSON object. "
+                                "Do NOT include any markdown formatting, explanations, or extra text."
+                            ),
+                        },
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": self._settings.ia.temperatura,
+                    "max_tokens": min(self._settings.ia.max_tokens, 4096),
+                }
+                if supports_json_object:
+                    payload["response_format"] = {"type": "json_object"}
 
-                    try:
-                        response = await client.post(
-                            self._base_url,
-                            headers=headers,
-                            json=payload,
-                        )
+                try:
+                    response = await client.post(
+                        self._base_url,
+                        headers=headers,
+                        json=payload,
+                    )
 
-                        if response.status_code == 429:
-                            raise AIRateLimitError("Groq")
-
-                        if response.status_code in (401, 403):
-                            raise MissingAPIKeyError("Groq", "GROQ_API_KEY (clave inválida o no autorizada)")
-
-                        response.raise_for_status()
-
-                        data = response.json()
-
-                        # Token usage
-                        if "usage" in data:
-                            self._tokens_used += data["usage"].get("total_tokens", 0)
-
-                        choices = data.get("choices", [])
-                        if not choices:
-                            raise AIInvalidResponseError("Groq", "No hay opciones en la respuesta")
-
-                        content = choices[0].get("message", {}).get("content", "")
-                        if not content:
-                            raise AIInvalidResponseError("Groq", "Contenido vacío")
-
-                        return content
-
-                    except httpx.HTTPStatusError as e:
-                        error_body = e.response.text
-                        err_msg = f"{current_model} (status {e.response.status_code}): {error_body}"
+                    if response.status_code == 429:
+                        last_retry_after = int(response.headers.get("retry-after", "8"))
+                        err_msg = f"{current_model}: RateLimit 429 (esperar {last_retry_after}s)"
                         errors_log.append(err_msg)
-                        logger.warning("Groq modelo '%s' (json_mode=%s) falló: %s", current_model, use_json_format, err_msg)
-                        if e.response.status_code == 429:
-                            raise AIRateLimitError("Groq") from e
-                        # Si es 400 y estábamos usando json_format, intentamos sin json_format antes de cambiar de modelo
-                        if e.response.status_code == 400 and use_json_format:
-                            continue
-                        break
-                    except httpx.RequestError as e:
-                        err_msg = f"{current_model} (red): {e}"
-                        errors_log.append(err_msg)
-                        logger.warning("Error de red con Groq modelo '%s': %s", current_model, e)
-                        break
+                        logger.warning("Groq modelo '%s' alcanzó rate limit. Probando siguiente modelo...", current_model)
+                        continue
+
+                    if response.status_code in (401, 403):
+                        raise MissingAPIKeyError("Groq", "GROQ_API_KEY (clave inválida o no autorizada)")
+
+                    response.raise_for_status()
+
+                    data = response.json()
+
+                    # Token usage
+                    if "usage" in data:
+                        self._tokens_used += data["usage"].get("total_tokens", 0)
+
+                    choices = data.get("choices", [])
+                    if not choices:
+                        raise AIInvalidResponseError("Groq", "No hay opciones en la respuesta")
+
+                    content = choices[0].get("message", {}).get("content", "")
+                    if not content:
+                        raise AIInvalidResponseError("Groq", "Contenido vacío")
+
+                    return content
+
+                except httpx.HTTPStatusError as e:
+                    error_body = e.response.text
+                    err_msg = f"{current_model} (status {e.response.status_code}): {error_body}"
+                    errors_log.append(err_msg)
+                    logger.warning("Groq modelo '%s' falló: %s", current_model, err_msg)
+                    if e.response.status_code == 429:
+                        last_retry_after = int(e.response.headers.get("retry-after", "8"))
+                        continue
+                    continue
+                except httpx.RequestError as e:
+                    err_msg = f"{current_model} (red): {e}"
+                    errors_log.append(err_msg)
+                    logger.warning("Error de red con Groq modelo '%s': %s", current_model, e)
+                    continue
+
+        # Si todos los modelos dieron 429, pausamos antes del siguiente intento de tenacity
+        if any("429" in err or "ratelimit" in err.lower() for err in errors_log):
+            logger.info("Esperando %d segundos antes de reintentar Groq...", last_retry_after)
+            await asyncio.sleep(min(last_retry_after, 15))
+            raise AIRateLimitError("Groq", retry_after=float(last_retry_after))
 
         raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron:\n" + "\n".join(errors_log))
 
