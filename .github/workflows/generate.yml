@@ -71,16 +71,10 @@ jobs:
           python-version: "3.12"
           cache: "pip"
 
-      - name: 🎥 Verificar / Configurar FFmpeg
-        run: |
-          if ! command -v ffmpeg &> /dev/null; then
-            echo "FFmpeg no encontrado, instalando..."
-            sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=15
-            sudo apt-get install -y --no-install-recommends ffmpeg
-          else
-            echo "✅ FFmpeg ya está preinstalado en el runner:"
-            ffmpeg -version | head -n 1
-          fi
+      - name: 🎥 Configurar FFmpeg
+        uses: FedericoCarboni/setup-ffmpeg@v3
+        with:
+          ffmpeg-version: release
 
       - name: 📦 Instalar dependencias
         run: |

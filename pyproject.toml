@@ -28,6 +28,7 @@ dependencies = [
     "edge-tts>=6.1.0",
     # Video
     "moviepy>=2.0.0",
+    "imageio-ffmpeg>=0.5.1",
     # Imagen
     "Pillow>=10.0.0",
     # Base de datos
