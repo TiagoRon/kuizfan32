@@ -159,10 +159,11 @@ class GeminiProvider(IAIProvider):
                 error_str = str(e).lower()
                 last_error = e
 
-                # Si es un error de Rate Limit / Cuota agotada, lanzar para reintento o fallback
+                # Si es un error de Rate Limit / Cuota agotada, registrar y probar con otro modelo
                 if "rate" in error_str or "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
-                    logger.warning("Gemini RateLimit/Quota alcanzado en '%s': %s", current_model, e)
-                    raise AIRateLimitError("Gemini") from e
+                    logger.warning("Gemini RateLimit/Quota alcanzado en '%s': %s. Probando siguiente modelo...", current_model, e)
+                    last_error = e
+                    continue
 
                 # Error fatal de API Key
                 if "api key" in error_str or "401" in error_str or "403" in error_str or "permission_denied" in error_str:
@@ -172,6 +173,10 @@ class GeminiProvider(IAIProvider):
                 # Si el modelo no existe o falla, intentar con el siguiente
                 logger.warning("El modelo '%s' de Gemini falló. Probando siguiente modelo... (Error: %s)", current_model, e)
                 continue
+
+        error_str = str(last_error).lower()
+        if "rate" in error_str or "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
+            raise AIRateLimitError("Gemini") from last_error
 
         raise AIProviderError("Gemini", f"Todos los modelos de Gemini fallaron. Último error: {last_error}")
 

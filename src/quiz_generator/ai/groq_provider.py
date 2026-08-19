@@ -90,6 +90,42 @@ class GroqProvider(IAIProvider):
     def tokens_used(self) -> int:
         return self._tokens_used
 
+    async def _get_available_models(
+        self, client: httpx.AsyncClient, headers: dict[str, str]
+    ) -> list[str]:
+        """Consulta dinámicamente los modelos activos disponibles para esta clave en Groq."""
+        try:
+            resp = await client.get(
+                "https://api.groq.com/openai/v1/models",
+                headers=headers,
+                timeout=10.0,
+            )
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_models = data.get("data", [])
+                models = [
+                    m["id"]
+                    for m in raw_models
+                    if isinstance(m, dict)
+                    and "id" in m
+                    and not m.get("deprecated", False)
+                    and not any(x in m["id"] for x in ("whisper", "tts", "guard", "vision", "embed", "prompt-guard"))
+                ]
+                if models:
+                    priority = ["llama-3.3-70b", "llama-3.1-8b", "llama3", "qwen", "mistral", "gemma"]
+                    def score(m_id: str) -> int:
+                        for i, p in enumerate(priority):
+                            if p in m_id:
+                                return i
+                        return 99
+                    models.sort(key=score)
+                    logger.info("Modelos activos detectados en Groq: %s", models[:5])
+                    return models
+        except Exception as e:
+            logger.warning("No se pudo obtener lista dinámica de modelos de Groq: %s", e)
+
+        return ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+
     @retry(
         retry=retry_if_exception_type(AIProviderError),
         stop=stop_after_attempt(3),
@@ -103,18 +139,11 @@ class GroqProvider(IAIProvider):
             "Content-Type": "application/json",
         }
 
-        # Models to try on Groq (only current active models)
-        models_to_try = [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-8b-instant",
-            "llama-3.2-3b-preview",
-            "llama-3.2-1b-preview",
-            "llama-3.2-11b-vision-preview",
-        ]
-
         errors_log: list[str] = []
 
         async with httpx.AsyncClient(timeout=30.0) as client:
+            models_to_try = await self._get_available_models(client, headers)
+
             for current_model in models_to_try:
                 # Probar primero con response_format json_object, si falla probar estándar
                 for use_json_format in (True, False):
