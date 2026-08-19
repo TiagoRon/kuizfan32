@@ -20,6 +20,7 @@ from typing import Any
 
 from quiz_generator.ai.gemini_provider import GeminiProvider
 from quiz_generator.ai.groq_provider import GroqProvider
+from quiz_generator.ai.offline_provider import OfflineQuizProvider
 from quiz_generator.anti_repetition.engine import AntiRepetitionEngine
 from quiz_generator.audio.engine import AudioEngine
 from quiz_generator.config import Settings, get_settings
@@ -48,6 +49,9 @@ class GenerationPipeline:
         self._fallback_provider = None
         if getattr(self._settings, "groq_api_key", None):
             self._fallback_provider = GroqProvider(self._settings)
+
+        # Proveedor de respaldo local / offline (100% resiliente)
+        self._offline_provider = OfflineQuizProvider()
 
         self._audio_engine = AudioEngine(self._settings)
         self._video_engine = VideoEngine(self._settings)
@@ -240,8 +244,9 @@ class GenerationPipeline:
 
         from quiz_generator.core.exceptions import AIProviderError, AIRateLimitError
 
+        # Nivel 1: Proveedor principal (Gemini)
         try:
-            quiz = await self._ai_provider.generate_quiz(
+            return await self._ai_provider.generate_quiz(
                 quiz_type=request.tipo,
                 difficulty=request.dificultad,
                 num_questions=request.num_preguntas,
@@ -250,10 +255,13 @@ class GenerationPipeline:
                 context=context,
             )
         except (AIRateLimitError, AIProviderError, Exception) as gemini_err:
+            logger.warning("Fallo en Gemini (%s). Evaluando proveedores de respaldo...", gemini_err)
+
+            # Nivel 2: Proveedor secundario (Groq)
             if self._fallback_provider:
-                logger.warning("Fallo en Gemini (%s). Usando GROQ de emergencia...", gemini_err)
                 try:
-                    quiz = await self._fallback_provider.generate_quiz(
+                    logger.info("Intentando generación con Groq de emergencia...")
+                    return await self._fallback_provider.generate_quiz(
                         quiz_type=request.tipo,
                         difficulty=request.dificultad,
                         num_questions=request.num_preguntas,
@@ -262,16 +270,22 @@ class GenerationPipeline:
                         context=context,
                     )
                 except Exception as groq_err:
-                    logger.error("Falló el proveedor de respaldo Groq: %s", groq_err)
-                    raise AIProviderError(
-                        "AI (Gemini + Groq)",
-                        f"Fallaron ambos proveedores de IA.\n\n[1] Gemini error: {gemini_err}\n\n[2] Groq error: {groq_err}",
-                    ) from groq_err
-            else:
-                logger.error("Fallo en Gemini y no hay proveedor de respaldo configurado: %s", gemini_err)
-                raise gemini_err
+                    logger.warning("Fallo en Groq (%s). Pasando a generador offline...", groq_err)
 
-        return quiz
+            # Nivel 3: Generador Offline / Local (Garantía de continuidad 100%)
+            logger.warning(
+                "⚠️ Proveedores externos no disponibles (Gemini: %s). "
+                "Activando generador OFFLINE de emergencia para garantizar la creación del video.",
+                gemini_err,
+            )
+            return await self._offline_provider.generate_quiz(
+                quiz_type=request.tipo,
+                difficulty=request.dificultad,
+                num_questions=request.num_preguntas,
+                language=request.idioma,
+                topic=request.tema,
+                context=context,
+            )
 
     async def _check_duplicates(self, quiz: Quiz) -> None:
         """Verifica que las preguntas no sean duplicadas."""

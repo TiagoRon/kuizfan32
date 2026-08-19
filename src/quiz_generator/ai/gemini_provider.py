@@ -6,8 +6,11 @@ para generar quizzes, hooks y metadatos mediante Gemini.
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
+import re
 from typing import Any
 
 from google import genai
@@ -102,8 +105,8 @@ class GeminiProvider(IAIProvider):
 
     @retry(
         retry=retry_if_exception_type(AIProviderError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=2, max=30),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=40),
         reraise=True,
     )
     async def _call_gemini(
@@ -123,6 +126,9 @@ class GeminiProvider(IAIProvider):
             "gemini-2.0-flash-lite",
             "gemini-1.5-flash",
             "gemini-1.5-flash-8b",
+            "gemini-2.5-flash",
+            "gemini-2.5-pro",
+            "gemini-1.5-pro",
         ]
 
         # Eliminar duplicados manteniendo el orden
@@ -131,14 +137,15 @@ class GeminiProvider(IAIProvider):
 
         last_error = None
 
-        for current_model in models_to_try:
+        for idx, current_model in enumerate(models_to_try):
             try:
+                max_tokens = min(self._settings.ia.max_tokens, 4096)
                 response = self._client.models.generate_content(
                     model=current_model,
                     contents=prompt,
                     config=genai_types.GenerateContentConfig(
                         temperature=self._settings.ia.temperatura,
-                        max_output_tokens=8192,
+                        max_output_tokens=max_tokens,
                         response_mime_type="application/json",
                     ),
                 )
@@ -159,10 +166,19 @@ class GeminiProvider(IAIProvider):
                 error_str = str(e).lower()
                 last_error = e
 
-                # Si es un error de Rate Limit / Cuota agotada, registrar y probar con otro modelo
+                # Si es un error de Rate Limit / Cuota agotada, pausar inteligentemente antes del siguiente modelo
                 if "rate" in error_str or "quota" in error_str or "429" in error_str or "resource_exhausted" in error_str:
-                    logger.warning("Gemini RateLimit/Quota alcanzado en '%s': %s. Probando siguiente modelo...", current_model, e)
-                    last_error = e
+                    wait_seconds = 2.0 * (idx + 1)
+                    match = re.search(r"retry(?:\s+after|\s+in)?\s+(\d+(?:\.\d+)?)s?", error_str)
+                    if match:
+                        with contextlib.suppress(ValueError):
+                            wait_seconds = float(match.group(1))
+                    wait_seconds = min(wait_seconds, 10.0)
+                    logger.warning(
+                        "Gemini RateLimit/Quota en '%s': %s. Esperando %.1fs antes de probar siguiente modelo...",
+                        current_model, e, wait_seconds,
+                    )
+                    await asyncio.sleep(wait_seconds)
                     continue
 
                 # Error fatal de API Key

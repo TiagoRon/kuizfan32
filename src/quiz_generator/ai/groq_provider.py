@@ -7,8 +7,10 @@ usando httpx, solicitando siempre respuestas en formato JSON.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
+import re
 from typing import Any
 
 import httpx
@@ -21,7 +23,7 @@ from tenacity import (
 
 from quiz_generator.ai.prompt_manager import PromptManager
 from quiz_generator.config import Settings
-from quiz_generator.core.enums import Difficulty, QuizType
+from quiz_generator.core.enums import Difficulty, QuizType, ViralTrigger
 from quiz_generator.core.exceptions import (
     AIInvalidResponseError,
     AIProviderError,
@@ -117,7 +119,16 @@ class GroqProvider(IAIProvider):
                     and not any(x in m["id"].lower() for x in excluded_keywords)
                 ]
                 if models:
-                    priority = ["llama-3.3", "llama-3.1", "compound", "qwen", "allam", "mistral", "gemma"]
+                    # Priorizar modelos rápidos y con alto límite de TPM primero
+                    priority = [
+                        "llama-3.1-8b-instant",
+                        "llama-3.3-70b-versatile",
+                        "llama-3.1-70b-versatile",
+                        "mixtral-8x7b-32768",
+                        "gemma2-9b-it",
+                        "deepseek-r1-distill-llama-70b",
+                        "qwen-2.5-32b",
+                    ]
                     def score(m_id: str) -> int:
                         for i, p in enumerate(priority):
                             if p in m_id.lower():
@@ -129,12 +140,18 @@ class GroqProvider(IAIProvider):
         except Exception as e:
             logger.warning("No se pudo obtener lista dinámica de modelos de Groq: %s", e)
 
-        return ["groq/compound", "groq/compound-mini", "qwen/qwen3.6-27b", "llama-3.3-70b-versatile"]
+        return [
+            "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it",
+            "deepseek-r1-distill-llama-70b",
+        ]
 
     @retry(
         retry=retry_if_exception_type(AIProviderError),
-        stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=2, min=5, max=30),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential(multiplier=2, min=3, max=30),
         reraise=True,
     )
     async def _call_groq(self, prompt: str) -> str:
@@ -145,13 +162,13 @@ class GroqProvider(IAIProvider):
         }
 
         errors_log: list[str] = []
-        last_retry_after = 5
+        last_retry_after = 4.0
 
         async with httpx.AsyncClient(timeout=60.0) as client:
             models_to_try = await self._get_available_models(client, headers)
+            max_tokens = min(self._settings.ia.max_tokens, 2500)
 
             for current_model in models_to_try:
-                supports_json_object = current_model.startswith("llama-3")
                 payload: dict[str, Any] = {
                     "model": current_model,
                     "messages": [
@@ -166,10 +183,9 @@ class GroqProvider(IAIProvider):
                         {"role": "user", "content": prompt},
                     ],
                     "temperature": self._settings.ia.temperatura,
-                    "max_tokens": 8192,
+                    "max_tokens": max_tokens,
+                    "response_format": {"type": "json_object"},
                 }
-                if supports_json_object:
-                    payload["response_format"] = {"type": "json_object"}
 
                 try:
                     response = await client.post(
@@ -179,14 +195,38 @@ class GroqProvider(IAIProvider):
                     )
 
                     if response.status_code == 429:
-                        last_retry_after = int(response.headers.get("retry-after", "8"))
+                        retry_header = response.headers.get("retry-after", "")
+                        retry_after = 4.0
+                        if retry_header:
+                            with contextlib.suppress(ValueError):
+                                retry_after = float(retry_header)
+                        else:
+                            match = re.search(r"try again in (\d+(?:\.\d+)?)s?", response.text, re.IGNORECASE)
+                            if match:
+                                with contextlib.suppress(ValueError):
+                                    retry_after = float(match.group(1))
+
+                        last_retry_after = max(retry_after, 2.0)
                         err_msg = f"{current_model}: RateLimit 429 (esperar {last_retry_after}s)"
                         errors_log.append(err_msg)
-                        logger.warning("Groq modelo '%s' alcanzó rate limit. Probando siguiente modelo...", current_model)
+                        logger.warning(
+                            "Groq modelo '%s' alcanzó rate limit. Esperando %.1fs antes de probar siguiente modelo...",
+                            current_model, last_retry_after,
+                        )
+                        await asyncio.sleep(min(last_retry_after, 6.0))
                         continue
 
                     if response.status_code in (401, 403):
                         raise MissingAPIKeyError("Groq", "GROQ_API_KEY (clave inválida o no autorizada)")
+
+                    if response.status_code == 400 and "response_format" in response.text:
+                        # Si el modelo específico no soporta response_format json_object, reintentar sin él
+                        payload.pop("response_format", None)
+                        response = await client.post(
+                            self._base_url,
+                            headers=headers,
+                            json=payload,
+                        )
 
                     response.raise_for_status()
 
@@ -220,7 +260,7 @@ class GroqProvider(IAIProvider):
                     errors_log.append(err_msg)
                     logger.warning("Groq modelo '%s' falló: %s", current_model, err_msg)
                     if e.response.status_code == 429:
-                        last_retry_after = int(e.response.headers.get("retry-after", "8"))
+                        await asyncio.sleep(min(last_retry_after, 6.0))
                         continue
                     continue
                 except httpx.RequestError as e:
@@ -231,11 +271,11 @@ class GroqProvider(IAIProvider):
 
         # Si todos los modelos dieron 429, pausamos antes del siguiente intento de tenacity
         if any("429" in err or "ratelimit" in err.lower() for err in errors_log):
-            logger.info("Esperando %d segundos antes de reintentar Groq...", last_retry_after)
-            await asyncio.sleep(min(last_retry_after, 15))
+            logger.info("Esperando %.1f segundos antes de reintentar Groq...", last_retry_after)
+            await asyncio.sleep(min(last_retry_after, 10.0))
             raise AIRateLimitError("Groq", retry_after=float(last_retry_after))
 
-        raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron:\n" + "\n".join(errors_log))
+        raise AIProviderError("Groq", "Todos los modelos de Groq fallaron:\n" + "\n".join(errors_log))
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
         """Parsea y repara la respuesta JSON de Groq si es necesario."""
@@ -315,12 +355,28 @@ class GroqProvider(IAIProvider):
         return self._build_quiz(data, quiz_type, difficulty, language)
 
     def _parse_viral_trigger(self, trigger_str: str) -> Any:
-        # Simplificación de la conversión
-        from quiz_generator.core.enums import ViralTrigger
-        try:
-            return ViralTrigger(trigger_str.lower())
-        except ValueError:
-            return ViralTrigger.CURIOSITY
+        mapping = {
+            "curiosidad": ViralTrigger.CURIOSIDAD,
+            "curiosity": ViralTrigger.CURIOSIDAD,
+            "sorpresa": ViralTrigger.SORPRESA,
+            "surprise": ViralTrigger.SORPRESA,
+            "competencia": ViralTrigger.COMPETENCIA,
+            "competition": ViralTrigger.COMPETENCIA,
+            "humor": ViralTrigger.HUMOR,
+            "nostalgia": ViralTrigger.NOSTALGIA,
+            "orgullo": ViralTrigger.ORGULLO,
+            "pride": ViralTrigger.ORGULLO,
+            "fomo": ViralTrigger.FOMO,
+            "recompensa": ViralTrigger.RECOMPENSA,
+            "reward": ViralTrigger.RECOMPENSA,
+            "desafio": ViralTrigger.DESAFIO,
+            "challenge": ViralTrigger.DESAFIO,
+            "identidad": ViralTrigger.IDENTIDAD,
+            "identity": ViralTrigger.IDENTIDAD,
+            "urgencia": ViralTrigger.URGENCIA,
+            "urgency": ViralTrigger.URGENCIA,
+        }
+        return mapping.get(trigger_str.lower().strip(), ViralTrigger.CURIOSIDAD)
 
     def _build_quiz(
         self,

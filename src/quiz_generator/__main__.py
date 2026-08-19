@@ -23,7 +23,13 @@ from quiz_generator import __app_name__, __version__
 from quiz_generator.core.enums import Difficulty, QuizType
 from quiz_generator.plugins.registry import discover_and_register_builtin_plugins
 
-console = Console()
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
+console = Console(legacy_windows=False)
 
 
 def _setup_logging(verbose: bool = False) -> None:

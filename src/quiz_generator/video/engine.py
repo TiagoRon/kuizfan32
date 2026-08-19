@@ -27,17 +27,54 @@ import math
 from pathlib import Path
 
 import numpy as np
-from moviepy import (
-    AudioArrayClip,
-    AudioClip,
-    AudioFileClip,
-    CompositeAudioClip,
-    CompositeVideoClip,
-    VideoClip,
-    VideoFileClip,
-    concatenate_videoclips,
-    vfx,
-)
+
+try:
+    from moviepy import (
+        AudioArrayClip,
+        AudioClip,
+        AudioFileClip,
+        CompositeAudioClip,
+        CompositeVideoClip,
+        VideoClip,
+        VideoFileClip,
+        concatenate_videoclips,
+        vfx,
+    )
+except ImportError:
+    try:
+        import moviepy.video.fx as vfx
+    except ImportError:
+        from moviepy import vfx  # type: ignore
+
+    try:
+        from moviepy.audio.AudioClip import AudioArrayClip, AudioClip, CompositeAudioClip
+    except ImportError:
+        from moviepy import AudioArrayClip, AudioClip, CompositeAudioClip  # type: ignore
+
+    try:
+        from moviepy.audio.io.AudioFileClip import AudioFileClip
+    except ImportError:
+        from moviepy import AudioFileClip  # type: ignore
+
+    try:
+        from moviepy.video.VideoClip import VideoClip
+    except ImportError:
+        from moviepy import VideoClip  # type: ignore
+
+    try:
+        from moviepy.video.io.VideoFileClip import VideoFileClip
+    except ImportError:
+        from moviepy import VideoFileClip  # type: ignore
+
+    try:
+        from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+    except ImportError:
+        from moviepy import CompositeVideoClip  # type: ignore
+
+    try:
+        from moviepy.video.compositing.concatenate import concatenate_videoclips
+    except ImportError:
+        from moviepy import concatenate_videoclips  # type: ignore
 from PIL import Image, ImageDraw
 
 from quiz_generator.audio.engine import QuizAudioPack
