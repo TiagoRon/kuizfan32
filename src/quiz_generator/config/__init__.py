@@ -315,6 +315,19 @@ def load_settings(
         **{k: v for k, v in merged.items() if k in Settings.model_fields},
     )
 
+    # Fallback para variables de entorno estándar sin prefijo QUIZ_
+    import os
+    if not settings.gemini_api_key:
+        settings.gemini_api_key = os.environ.get("GEMINI_API_KEY", "")
+    if not settings.groq_api_key:
+        settings.groq_api_key = os.environ.get("GROQ_API_KEY", "")
+    if not settings.pexels_api_key:
+        settings.pexels_api_key = os.environ.get("PEXELS_API_KEY", "")
+    if not settings.elevenlabs_api_key:
+        settings.elevenlabs_api_key = os.environ.get("ELEVENLABS_API_KEY", "")
+    if not settings.openai_api_key:
+        settings.openai_api_key = os.environ.get("OPENAI_API_KEY", "")
+
     return settings
 
 
