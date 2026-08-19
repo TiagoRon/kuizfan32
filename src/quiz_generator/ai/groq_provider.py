@@ -103,18 +103,16 @@ class GroqProvider(IAIProvider):
             "Content-Type": "application/json",
         }
 
-        # Models to try on Groq (current active models)
+        # Models to try on Groq (only current active models)
         models_to_try = [
             "llama-3.3-70b-versatile",
             "llama-3.1-8b-instant",
-            "llama3-70b-8192",
-            "llama3-8b-8192",
-            "gemma2-9b-it",
-            "qwen-2.5-32b",
-            "deepseek-r1-distill-llama-70b",
+            "llama-3.2-3b-preview",
+            "llama-3.2-1b-preview",
+            "llama-3.2-11b-vision-preview",
         ]
 
-        last_error = None
+        errors_log: list[str] = []
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             for current_model in models_to_try:
@@ -143,7 +141,7 @@ class GroqProvider(IAIProvider):
                             raise AIRateLimitError("Groq")
 
                         if response.status_code in (401, 403):
-                            raise MissingAPIKeyError("Groq", "GROQ_API_KEY")
+                            raise MissingAPIKeyError("Groq", "GROQ_API_KEY (clave inválida o no autorizada)")
 
                         response.raise_for_status()
 
@@ -165,8 +163,9 @@ class GroqProvider(IAIProvider):
 
                     except httpx.HTTPStatusError as e:
                         error_body = e.response.text
-                        last_error = f"HTTP {e.response.status_code} en {current_model}: {error_body}"
-                        logger.warning("Groq modelo '%s' (json_mode=%s) falló: %s", current_model, use_json_format, last_error)
+                        err_msg = f"{current_model} (status {e.response.status_code}): {error_body}"
+                        errors_log.append(err_msg)
+                        logger.warning("Groq modelo '%s' (json_mode=%s) falló: %s", current_model, use_json_format, err_msg)
                         if e.response.status_code == 429:
                             raise AIRateLimitError("Groq") from e
                         # Si es 400 y estábamos usando json_format, intentamos sin json_format antes de cambiar de modelo
@@ -174,11 +173,12 @@ class GroqProvider(IAIProvider):
                             continue
                         break
                     except httpx.RequestError as e:
-                        last_error = e
+                        err_msg = f"{current_model} (red): {e}"
+                        errors_log.append(err_msg)
                         logger.warning("Error de red con Groq modelo '%s': %s", current_model, e)
                         break
 
-        raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron. Último error: {last_error}")
+        raise AIProviderError("Groq", f"Todos los modelos de Groq fallaron:\n" + "\n".join(errors_log))
 
     def _parse_json_response(self, text: str) -> dict[str, Any]:
         """Parsea la respuesta JSON de Groq."""

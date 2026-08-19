@@ -249,20 +249,27 @@ class GenerationPipeline:
                 topic=request.tema,
                 context=context,
             )
-        except (AIRateLimitError, AIProviderError) as e:
+        except (AIRateLimitError, AIProviderError, Exception) as gemini_err:
             if self._fallback_provider:
-                logger.warning("Fallo en Gemini (%s). Usando GROQ de emergencia...", e)
-                quiz = await self._fallback_provider.generate_quiz(
-                    quiz_type=request.tipo,
-                    difficulty=request.dificultad,
-                    num_questions=request.num_preguntas,
-                    language=request.idioma,
-                    topic=request.tema,
-                    context=context,
-                )
+                logger.warning("Fallo en Gemini (%s). Usando GROQ de emergencia...", gemini_err)
+                try:
+                    quiz = await self._fallback_provider.generate_quiz(
+                        quiz_type=request.tipo,
+                        difficulty=request.dificultad,
+                        num_questions=request.num_preguntas,
+                        language=request.idioma,
+                        topic=request.tema,
+                        context=context,
+                    )
+                except Exception as groq_err:
+                    logger.error("Falló el proveedor de respaldo Groq: %s", groq_err)
+                    raise AIProviderError(
+                        "AI (Gemini + Groq)",
+                        f"Fallaron ambos proveedores de IA.\n\n[1] Gemini error: {gemini_err}\n\n[2] Groq error: {groq_err}",
+                    ) from groq_err
             else:
-                logger.error("Fallo en IA y no hay proveedor de respaldo configurado.")
-                raise e
+                logger.error("Fallo en Gemini y no hay proveedor de respaldo configurado: %s", gemini_err)
+                raise gemini_err
 
         return quiz
 
