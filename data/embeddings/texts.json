@@ -36,7 +36,12 @@
     "¿Qué es el nombre del científico que descubrió la ley de la gravedad?",
     "¿Qué es el nombre del primer hombre en llegar a la Luna?",
     "¿Qué es el nombre del pintor que creó la Mona Lisa?",
-    "¿Sabías que..."
+    "¿Sabías que...",
+    "¿Cuál es el único metal que es líquido a temperatura ambiente?",
+    "¿Qué imperio construyó la ciudad de Machu Picchu?",
+    "¿Cuál es el país con mayor número de fronteras terrestres reconocidas?",
+    "¿Qué película ganó el Oscar a Mejor Película en 1994?",
+    "¿Crees saberlo todo? Pon a prueba tu mente 🧠"
   ],
   "metadata": [
     {
@@ -185,6 +190,26 @@
     },
     {
       "quiz_id": "7f7248b1f319",
+      "tipo": "hook"
+    },
+    {
+      "quiz_id": "9067457bbaed",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "9067457bbaed",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "9067457bbaed",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "9067457bbaed",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "9067457bbaed",
       "tipo": "hook"
     }
   ]
