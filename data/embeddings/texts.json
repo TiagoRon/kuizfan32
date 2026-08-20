@@ -42,7 +42,13 @@
     "¿Cuál es el país con mayor número de fronteras terrestres reconocidas?",
     "¿Qué película ganó el Oscar a Mejor Película en 1994?",
     "¿Crees saberlo todo? Pon a prueba tu mente 🧠",
-    "¿Puedes con este quiz? 🧠"
+    "¿Puedes con este quiz? 🧠",
+    "¿Qué planeta del Sistema Solar tiene el día más corto?",
+    "¿En qué año se fundó la Universidad de Oxford?",
+    "¿Cuál es el lago subglacial más grande del mundo?",
+    "¿Qué serie de TV introdujo por primera vez el término \"binge‑watching\" en su campaña?",
+    "¿Qué país ganó la primera Copa Mundial de Fútbol femenino en 1991?",
+    "¿Crees que sabes todo? Pon a prueba tu mente!"
   ],
   "metadata": [
     {
@@ -215,6 +221,30 @@
     },
     {
       "quiz_id": "5b7019ece329",
+      "tipo": "hook"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
+      "tipo": "trivia"
+    },
+    {
+      "quiz_id": "f823f7008aa0",
       "tipo": "hook"
     }
   ]
