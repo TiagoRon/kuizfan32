@@ -87,6 +87,8 @@ class SFXManager:
     FANFARE = "fanfare"
     CONFETTI = "confetti"
     TRANSITION = "transition"
+    TIMER_WARNING = "timer_warning"
+    TIMER_CRITICAL = "timer_critical"
 
     def __init__(self, sounds_dir: str | Path = "assets/sounds") -> None:
         self._sounds_dir = Path(sounds_dir)
@@ -145,13 +147,16 @@ class SFXManager:
         _save_wav(wave_data * env, path)
 
     def _generate_tick_urgent(self, path: Path) -> None:
-        """Tick urgente para los últimos 3 segundos."""
-        duration = 0.12
+        """Tick urgente para los últimos 3 segundos — más dramático con armónicos."""
+        duration = 0.15
         freq = 1200.0
         wave_data = _sine_wave(freq, duration, 0.6)
-        # Añadir armónico
-        wave_data += _sine_wave(freq * 2, duration, 0.2)
-        env = _envelope(len(wave_data), attack=0.002, release=0.08)
+        # Armónicos adicionales para más dramatismo
+        wave_data += _sine_wave(freq * 2, duration, 0.25)
+        wave_data += _sine_wave(freq * 3, duration, 0.1)
+        # Sub-bass para peso
+        wave_data += _sine_wave(freq * 0.5, duration, 0.15)
+        env = _envelope(len(wave_data), attack=0.002, release=0.10)
         _save_wav(wave_data * env, path)
 
     def _generate_correct(self, path: Path) -> None:
@@ -334,6 +339,59 @@ class SFXManager:
         env = _envelope(n_samples, attack=0.01, release=0.15)
         _save_wav(wave_data * env, path)
 
+    def _generate_timer_warning(self, path: Path) -> None:
+        """Alarma de advertencia del timer — beep-beep rápido ascendente.
+
+        Se reproduce cuando quedan ~5 segundos. Dos pulsos cortos
+        que suben de tono para crear tensión.
+        """
+        full = np.array([], dtype=np.float64)
+
+        # Dos pulsos rápidos ascendentes
+        for i, freq in enumerate([800, 1000]):
+            note = _sine_wave(freq, 0.08, 0.5)
+            note += _sine_wave(freq * 2, 0.08, 0.2)  # Armónico
+            note += _sine_wave(freq * 1.5, 0.08, 0.1)  # Quinta
+            note *= _envelope(len(note), attack=0.003, release=0.05)
+
+            if i < 1:
+                gap = np.zeros(int(SAMPLE_RATE * 0.06))
+                note = np.concatenate([note, gap])
+
+            full = np.concatenate([full, note])
+
+        _save_wav(full, path)
+
+    def _generate_timer_critical(self, path: Path) -> None:
+        """Alarma crítica del timer — heartbeat + alerta de urgencia máxima.
+
+        Se reproduce en el último segundo. Simula un latido de corazón
+        con un tono de alarma agudo.
+        """
+        full = np.array([], dtype=np.float64)
+
+        # Heartbeat: dos pulsos graves cortos (lub-dub)
+        for i, (freq, dur) in enumerate([(60, 0.08), (80, 0.06)]):
+            beat = _sine_wave(freq, dur, 0.7)
+            beat += _sine_wave(freq * 2, dur, 0.3)
+            beat *= _envelope(len(beat), attack=0.003, release=dur * 0.7)
+            gap = np.zeros(int(SAMPLE_RATE * (0.04 if i == 0 else 0.08)))
+            full = np.concatenate([full, beat, gap])
+
+        # Alarma aguda
+        alarm_dur = 0.2
+        n_alarm = int(SAMPLE_RATE * alarm_dur)
+        t_alarm = np.linspace(0, alarm_dur, n_alarm, endpoint=False)
+        # Frecuencia ascendente rápida (800 → 1600 Hz)
+        freq_sweep = np.linspace(800, 1600, n_alarm)
+        phase = np.cumsum(freq_sweep / SAMPLE_RATE) * 2 * np.pi
+        alarm = 0.45 * np.sin(phase)
+        alarm += 0.15 * np.sin(phase * 2)  # Armónico
+        alarm *= _envelope(n_alarm, attack=0.005, release=0.12)
+
+        full = np.concatenate([full, alarm])
+        _save_wav(full, path)
+
     # Mapeo de nombre → generador
     _generators: typing.ClassVar[dict[str, typing.Any]] = {
         TICK: _generate_tick,
@@ -348,4 +406,6 @@ class SFXManager:
         FANFARE: _generate_fanfare,
         CONFETTI: _generate_confetti,
         TRANSITION: _generate_transition,
+        TIMER_WARNING: _generate_timer_warning,
+        TIMER_CRITICAL: _generate_timer_critical,
     }

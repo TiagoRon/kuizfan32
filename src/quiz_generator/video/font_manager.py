@@ -21,25 +21,25 @@ logger = logging.getLogger(__name__)
 # URLs de Google Fonts (archivos .ttf directos)
 _GOOGLE_FONTS_URLS: dict[str, str] = {
     "Montserrat-Bold": (
-        "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-Bold.ttf"
+        "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-Bold.ttf"
     ),
     "Montserrat-ExtraBold": (
-        "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-ExtraBold.ttf"
+        "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-ExtraBold.ttf"
     ),
     "Montserrat-SemiBold": (
-        "https://github.com/JulietaUla/Montserrat/raw/master/fonts/ttf/Montserrat-SemiBold.ttf"
+        "https://raw.githubusercontent.com/JulietaUla/Montserrat/master/fonts/ttf/Montserrat-SemiBold.ttf"
     ),
     "Inter-Regular": (
-        "https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Regular.ttf"
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
     ),
     "Inter-Bold": (
-        "https://github.com/rsms/inter/raw/master/docs/font-files/Inter-Bold.ttf"
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
     ),
     "Inter-SemiBold": (
-        "https://github.com/rsms/inter/raw/master/docs/font-files/Inter-SemiBold.ttf"
+        "https://raw.githubusercontent.com/google/fonts/main/ofl/inter/Inter%5Bopsz%2Cwght%5D.ttf"
     ),
     "NotoColorEmoji": (
-        "https://github.com/googlefonts/noto-emoji/raw/main/fonts/NotoColorEmoji.ttf"
+        "https://raw.githubusercontent.com/googlefonts/noto-emoji/main/fonts/NotoColorEmoji.ttf"
     ),
 }
 
@@ -113,15 +113,15 @@ class FontManager:
 
     def _resolve_emoji_font(self) -> Path | None:
         """Busca la mejor fuente de emojis disponible."""
-        # 1. Buscar en caché local
-        local = self._cache_dir / "NotoColorEmoji.ttf"
-        if local.exists():
-            return local
-
-        # 2. Buscar Segoe UI Emoji en sistema (Windows)
+        # 1. Buscar Segoe UI Emoji en sistema (Windows — soporte nativo de color)
         segoe = self._find_system_font("Segoe UI Emoji")
         if segoe:
             return segoe
+
+        # 2. Buscar en caché local
+        local = self._cache_dir / "NotoColorEmoji.ttf"
+        if local.exists():
+            return local
 
         # 3. Buscar Noto Color Emoji en sistema
         noto = self._find_system_font("Noto Color Emoji")

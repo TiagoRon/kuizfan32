@@ -300,19 +300,45 @@ class GeminiProvider(IAIProvider):
         )
 
         # Preguntas
+        raw_preguntas = []
+        if isinstance(data, dict):
+            raw_preguntas = (
+                data.get("preguntas")
+                or data.get("questions")
+                or data.get("items")
+                or []
+            )
+            if not raw_preguntas and isinstance(data.get("quiz"), dict):
+                raw_preguntas = (
+                    data["quiz"].get("preguntas")
+                    or data["quiz"].get("questions")
+                    or data["quiz"].get("items")
+                    or []
+                )
+        elif isinstance(data, list):
+            raw_preguntas = data
+
         preguntas = []
-        for q_data in data.get("preguntas", []):
+        for q_data in raw_preguntas:
+            if not isinstance(q_data, dict):
+                continue
+            raw_answers = (
+                q_data.get("respuestas")
+                or q_data.get("answers")
+                or q_data.get("options")
+                or []
+            )
             respuestas = [
                 Answer(
-                    texto=a.get("texto", ""),
-                    es_correcta=a.get("es_correcta", False),
-                    explicacion=a.get("explicacion"),
-                    emoji=a.get("emoji"),
+                    texto=a.get("texto", "") or a.get("text", "") if isinstance(a, dict) else str(a),
+                    es_correcta=a.get("es_correcta", False) or a.get("is_correct", False) if isinstance(a, dict) else False,
+                    explicacion=a.get("explicacion") or a.get("explanation") if isinstance(a, dict) else None,
+                    emoji=a.get("emoji") if isinstance(a, dict) else None,
                 )
-                for a in q_data.get("respuestas", [])
+                for a in raw_answers
             ]
             # Parse dificultad de forma segura
-            raw_diff = q_data.get("dificultad")
+            raw_diff = q_data.get("dificultad") or q_data.get("difficulty")
             try:
                 diff_val = Difficulty(raw_diff) if raw_diff else difficulty
             except (ValueError, KeyError):
@@ -320,16 +346,19 @@ class GeminiProvider(IAIProvider):
 
             preguntas.append(
                 Question(
-                    texto=q_data.get("texto", ""),
+                    texto=q_data.get("texto") or q_data.get("question") or q_data.get("text", ""),
                     respuestas=respuestas,
                     dificultad=diff_val,
-                    tiempo_segundos=q_data.get("tiempo_segundos", 10),
-                    curiosidad=q_data.get("curiosidad"),
-                    imagen_url=q_data.get("imagen_url"),
-                    emoji_pista=q_data.get("emoji_pista"),
-                    categoria=q_data.get("categoria"),
+                    tiempo_segundos=q_data.get("tiempo_segundos") or q_data.get("timer_seconds", 10),
+                    curiosidad=q_data.get("curiosidad") or q_data.get("fun_fact"),
+                    imagen_url=q_data.get("imagen_url") or q_data.get("image_url"),
+                    emoji_pista=q_data.get("emoji_pista") or q_data.get("emoji_hint"),
+                    categoria=q_data.get("categoria") or q_data.get("category"),
                 )
             )
+
+        if not preguntas:
+            raise AIInvalidResponseError("Gemini", "La respuesta del modelo no contiene preguntas válidas.")
 
         # Metadata
         meta_data = data.get("metadata", {})

@@ -88,6 +88,32 @@ from quiz_generator.video.thumbnail import ThumbnailGenerator
 
 logger = logging.getLogger(__name__)
 
+# =============================================================================
+# Polyfills de compatibilidad MoviePy 1.x <-> 2.x
+# =============================================================================
+for _cls in [VideoClip, AudioClip, AudioArrayClip, CompositeAudioClip, CompositeVideoClip]:
+    if not hasattr(_cls, "with_start"):
+        _cls.with_start = lambda self, t: self.set_start(t)
+    if not hasattr(_cls, "with_duration"):
+        _cls.with_duration = lambda self, d: self.set_duration(d)
+    if not hasattr(_cls, "with_audio"):
+        _cls.with_audio = lambda self, a: self.set_audio(a)
+    if not hasattr(_cls, "with_position"):
+        _cls.with_position = lambda self, p: self.set_position(p)
+    if not hasattr(_cls, "subclipped"):
+        _cls.subclipped = lambda self, *args, **kwargs: self.subclip(*args, **kwargs)
+    if not hasattr(_cls, "with_volume_scaled"):
+        def _vol_scaled(self, factor):
+            try:
+                from moviepy.audio.fx.all import volumex
+                return self.fx(volumex, factor)
+            except Exception:
+                try:
+                    return self.volumex(factor)
+                except Exception:
+                    return self
+        _cls.with_volume_scaled = _vol_scaled
+
 
 def _pil_to_numpy(img: Image.Image) -> np.ndarray:
     """Convierte una imagen Pillow a array numpy para MoviePy."""
@@ -95,15 +121,19 @@ def _pil_to_numpy(img: Image.Image) -> np.ndarray:
 
 
 def _safe_audio_clip(path: str | Path) -> AudioClip:
-    """Carga el audio completamente en RAM para evitar bugs de lectura (out-of-bounds) de MoviePy 2."""
+    """Carga el audio completamente en RAM con soporte para NumPy 2.x y MoviePy 1.x/2.x."""
     try:
         clip = AudioFileClip(str(path))
         fps = getattr(clip, "fps", 44100)
 
-        # Leer todo a memoria de forma segura
-        audio_array = clip.to_soundarray()
-        clip.close()
+        # Leer audio con compatibilidad para NumPy 2.x (evita error de iter_chunks generator)
+        try:
+            audio_array = clip.to_soundarray()
+        except TypeError:
+            chunks = list(clip.iter_chunks(fps=fps, quantize=False, nbytes=2, chunksize=20000))
+            audio_array = np.vstack(chunks) if chunks else np.zeros((1, 2))
 
+        clip.close()
         safe_clip = AudioArrayClip(audio_array, fps=fps)
         return safe_clip
     except Exception as e:
@@ -152,6 +182,11 @@ class VideoEngine:
         Returns:
             Ruta al video exportado.
         """
+        if not quiz.preguntas:
+            raise ValueError(
+                f"No se puede componer un video sin preguntas. Quiz id={quiz.id} tiene 0 preguntas."
+            )
+
         output_path.parent.mkdir(parents=True, exist_ok=True)
         answer_videos = answer_videos or {}
         clips: list = []
@@ -211,6 +246,11 @@ class VideoEngine:
             final_video = self._add_background_music(
                 final_video, audio_pack,
             )
+
+        # Asegurar duraciones para MoviePy (evita ValueError: Attribute 'duration' not set)
+        if final_video.duration is not None and final_video.audio is not None:
+            if getattr(final_video.audio, "duration", None) is None:
+                final_video.audio.duration = final_video.duration
 
         # Exportar
         logger.info("Exportando video a: %s", output_path)
@@ -514,15 +554,27 @@ class VideoEngine:
 
         clip = VideoClip(make_frame, duration=total_duration)
 
-        # Agregar ticks de countdown como audio
+        # Agregar ticks de countdown como audio con urgencia progresiva
         audio_layers = []
         for t in range(timer_seconds):
             try:
                 remaining = timer_seconds - t
-                sfx_name = SFXManager.TICK_URGENT if remaining <= 3 else SFXManager.TICK
-                tick_path = self._sfx_manager.get_sfx(sfx_name)
-                tick_audio = _safe_audio_clip(str(tick_path)).with_start(float(t))
-                audio_layers.append(tick_audio)
+                if remaining <= 3:
+                    # Últimos 3 segundos: ticks urgentes a doble tempo (cada 0.5s)
+                    sfx_name = SFXManager.TICK_URGENT
+                    tick_path = self._sfx_manager.get_sfx(sfx_name)
+                    tick_audio = _safe_audio_clip(str(tick_path)).with_start(float(t))
+                    audio_layers.append(tick_audio)
+                    # Tick extra a la mitad del segundo
+                    tick_audio_half = _safe_audio_clip(str(tick_path)).with_start(
+                        float(t) + 0.5,
+                    ).with_volume_scaled(0.7)
+                    audio_layers.append(tick_audio_half)
+                else:
+                    sfx_name = SFXManager.TICK
+                    tick_path = self._sfx_manager.get_sfx(sfx_name)
+                    tick_audio = _safe_audio_clip(str(tick_path)).with_start(float(t))
+                    audio_layers.append(tick_audio)
             except Exception:
                 pass
 
@@ -532,6 +584,28 @@ class VideoEngine:
             audio_layers.insert(0, _safe_audio_clip(str(start_path)).with_start(0))
         except Exception:
             pass
+
+        # SFX de warning al llegar a 5 segundos
+        if timer_seconds > 5:
+            try:
+                warning_time = float(timer_seconds - 5)
+                warning_path = self._sfx_manager.get_sfx(SFXManager.TIMER_WARNING)
+                audio_layers.append(
+                    _safe_audio_clip(str(warning_path)).with_start(warning_time).with_volume_scaled(0.6),
+                )
+            except Exception:
+                pass
+
+        # SFX crítico en el último segundo
+        if timer_seconds > 1:
+            try:
+                critical_time = float(timer_seconds - 1)
+                critical_path = self._sfx_manager.get_sfx(SFXManager.TIMER_CRITICAL)
+                audio_layers.append(
+                    _safe_audio_clip(str(critical_path)).with_start(critical_time).with_volume_scaled(0.7),
+                )
+            except Exception:
+                pass
 
         if audio_layers:
             clip = clip.with_audio(CompositeAudioClip(audio_layers))
@@ -764,7 +838,11 @@ class VideoEngine:
                     except Exception:
                         final_clips.append(clips[i])
 
-        return concatenate_videoclips(final_clips, method="compose")
+        result = concatenate_videoclips(final_clips, method="compose")
+        if result.duration is not None and result.audio is not None:
+            if getattr(result.audio, "duration", None) is None:
+                result.audio.duration = result.duration
+        return result
 
     @staticmethod
     def _pick_transition_style(prev_type: str, curr_type: str) -> str:
@@ -872,11 +950,22 @@ class VideoEngine:
                     video.audio,
                     music_audio.with_volume_scaled(music_config.volumen),
                 ])
-                return video.with_audio(combined)
+                combined.duration = total_duration
+                res = video.with_audio(combined)
+                if res.duration is None:
+                    res.duration = total_duration
+                if res.audio is not None and getattr(res.audio, "duration", None) is None:
+                    res.audio.duration = total_duration
+                return res
             else:
-                return video.with_audio(
-                    music_audio.with_volume_scaled(music_config.volumen),
-                )
+                music_res = music_audio.with_volume_scaled(music_config.volumen)
+                music_res.duration = total_duration
+                res = video.with_audio(music_res)
+                if res.duration is None:
+                    res.duration = total_duration
+                if res.audio is not None and getattr(res.audio, "duration", None) is None:
+                    res.audio.duration = total_duration
+                return res
 
         except Exception:
             logger.exception("Error al agregar música de fondo")

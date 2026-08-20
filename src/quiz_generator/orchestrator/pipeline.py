@@ -149,6 +149,19 @@ class GenerationPipeline:
             if validation_errors:
                 logger.warning("Errores de validación: %s", validation_errors)
                 errors.extend(validation_errors)
+                if not quiz.preguntas or len(quiz.preguntas) < plugin.min_questions:
+                    logger.warning(
+                        "Quiz inválido o con preguntas insuficientes (%d < %d). "
+                        "Activando generador offline de emergencia...",
+                        len(quiz.preguntas), plugin.min_questions,
+                    )
+                    quiz = await self._offline_provider.generate_quiz(
+                        quiz_type=request.tipo,
+                        difficulty=request.dificultad,
+                        num_questions=request.num_preguntas,
+                        language=request.idioma,
+                        topic=request.tema,
+                    )
 
             # Paso 5: Generar audio
             self._report_progress(
@@ -242,11 +255,11 @@ class GenerationPipeline:
                 q for q in preguntas_excluidas if not (q in seen or seen.add(q))
             ]
 
-        from quiz_generator.core.exceptions import AIProviderError, AIRateLimitError
+        from quiz_generator.core.exceptions import AIInvalidResponseError, AIProviderError, AIRateLimitError
 
         # Nivel 1: Proveedor principal (Gemini)
         try:
-            return await self._ai_provider.generate_quiz(
+            quiz = await self._ai_provider.generate_quiz(
                 quiz_type=request.tipo,
                 difficulty=request.dificultad,
                 num_questions=request.num_preguntas,
@@ -254,6 +267,9 @@ class GenerationPipeline:
                 topic=request.tema,
                 context=context,
             )
+            if not quiz.preguntas:
+                raise AIInvalidResponseError("Gemini", "Quiz generado sin preguntas.")
+            return quiz
         except (AIRateLimitError, AIProviderError, Exception) as gemini_err:
             logger.warning("Fallo en Gemini (%s). Evaluando proveedores de respaldo...", gemini_err)
 
@@ -261,7 +277,7 @@ class GenerationPipeline:
             if self._fallback_provider:
                 try:
                     logger.info("Intentando generación con Groq de emergencia...")
-                    return await self._fallback_provider.generate_quiz(
+                    quiz = await self._fallback_provider.generate_quiz(
                         quiz_type=request.tipo,
                         difficulty=request.dificultad,
                         num_questions=request.num_preguntas,
@@ -269,6 +285,9 @@ class GenerationPipeline:
                         topic=request.tema,
                         context=context,
                     )
+                    if not quiz.preguntas:
+                        raise AIInvalidResponseError("Groq", "Quiz generado sin preguntas.")
+                    return quiz
                 except Exception as groq_err:
                     logger.warning("Fallo en Groq (%s). Pasando a generador offline...", groq_err)
 

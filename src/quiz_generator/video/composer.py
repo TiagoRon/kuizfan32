@@ -65,93 +65,345 @@ class SceneComposer:
         r, g, b = self._hex_to_rgb(hex_color)
         return (r, g, b, alpha)
 
+    # =========================================================================
+    # Sistema de Temas de Fondo — 6 variantes que rotan por pregunta
+    # =========================================================================
+
+    _BACKGROUND_THEMES = [
+        {  # 0: Nebula Cosmos — nubes cósmicas + estrellas
+            "gradient_top": (12, 10, 30),
+            "gradient_mid": (30, 15, 60),
+            "gradient_bottom": (8, 20, 40),
+            "nebula_colors": [
+                (108, 92, 231, 14), (0, 206, 209, 12),
+                (255, 105, 180, 10), (80, 60, 200, 12),
+            ],
+            "orb_colors": [
+                (108, 92, 231), (0, 206, 209), (255, 105, 180),
+                (160, 120, 255), (0, 200, 150),
+            ],
+            "accent": (108, 92, 231),
+            "style": "nebula",
+        },
+        {  # 1: Ocean Deep — ondas fluidas azul/verde + burbujas
+            "gradient_top": (5, 15, 35),
+            "gradient_mid": (0, 40, 70),
+            "gradient_bottom": (0, 60, 80),
+            "nebula_colors": [
+                (0, 120, 180, 14), (0, 200, 170, 12),
+                (0, 80, 140, 10), (30, 180, 220, 11),
+            ],
+            "orb_colors": [
+                (0, 180, 220), (0, 220, 180), (30, 140, 200),
+                (0, 250, 200), (80, 200, 255),
+            ],
+            "accent": (0, 180, 220),
+            "style": "ocean",
+        },
+        {  # 2: Neon Inferno — rayas diagonales neon + partículas
+            "gradient_top": (25, 5, 15),
+            "gradient_mid": (50, 10, 30),
+            "gradient_bottom": (20, 5, 25),
+            "nebula_colors": [
+                (255, 50, 100, 14), (255, 140, 0, 12),
+                (255, 200, 0, 10), (200, 0, 80, 11),
+            ],
+            "orb_colors": [
+                (255, 50, 100), (255, 140, 0), (255, 200, 50),
+                (200, 0, 120), (255, 80, 80),
+            ],
+            "accent": (255, 50, 100),
+            "style": "neon",
+        },
+        {  # 3: Crystal Grid — red hexagonal + reflejos cristalinos
+            "gradient_top": (10, 10, 25),
+            "gradient_mid": (15, 20, 45),
+            "gradient_bottom": (5, 10, 30),
+            "nebula_colors": [
+                (100, 140, 255, 12), (180, 200, 255, 10),
+                (60, 100, 200, 11), (140, 160, 240, 9),
+            ],
+            "orb_colors": [
+                (120, 160, 255), (180, 200, 255), (80, 120, 220),
+                (200, 220, 255), (100, 180, 255),
+            ],
+            "accent": (120, 160, 255),
+            "style": "crystal",
+        },
+        {  # 4: Aurora Borealis — bandas curvadas luminosas
+            "gradient_top": (5, 10, 20),
+            "gradient_mid": (10, 25, 35),
+            "gradient_bottom": (5, 15, 25),
+            "nebula_colors": [
+                (0, 255, 130, 14), (0, 200, 255, 12),
+                (100, 255, 200, 10), (0, 180, 160, 11),
+            ],
+            "orb_colors": [
+                (0, 255, 130), (0, 200, 255), (100, 255, 200),
+                (50, 220, 180), (0, 180, 255),
+            ],
+            "accent": (0, 255, 130),
+            "style": "aurora",
+        },
+        {  # 5: Electric Storm — rayos estilizados + chispas
+            "gradient_top": (15, 5, 25),
+            "gradient_mid": (25, 10, 50),
+            "gradient_bottom": (10, 5, 30),
+            "nebula_colors": [
+                (180, 0, 255, 14), (255, 255, 0, 10),
+                (0, 200, 255, 12), (200, 100, 255, 11),
+            ],
+            "orb_colors": [
+                (180, 0, 255), (255, 220, 0), (0, 200, 255),
+                (200, 100, 255), (255, 150, 255),
+            ],
+            "accent": (180, 0, 255),
+            "style": "electric",
+        },
+    ]
+
     def _create_gradient_background(
         self,
         color_top: str | None = None,
         color_bottom: str | None = None,
         add_pattern: bool = True,
+        theme_index: int = 0,
     ) -> Image.Image:
-        """Crea un fondo premium con degradado vertical y patrón sutil."""
+        """Crea un fondo premium con degradado vertical, patrón temático y variación por pregunta."""
         img = Image.new("RGBA", (self._width, self._height))
         draw = ImageDraw.Draw(img)
 
-        top = self._hex_to_rgb(color_top or self._colors.gradiente_inicio)
-        bottom = self._hex_to_rgb(color_bottom or self._colors.gradiente_fin)
+        theme = self._BACKGROUND_THEMES[theme_index % len(self._BACKGROUND_THEMES)]
 
-        # Gradiente principal
+        if color_top and color_bottom:
+            top = self._hex_to_rgb(color_top)
+            mid = tuple((a + b) // 2 for a, b in zip(top, self._hex_to_rgb(color_bottom)))
+            bottom = self._hex_to_rgb(color_bottom)
+        else:
+            top = theme["gradient_top"]
+            mid = theme["gradient_mid"]
+            bottom = theme["gradient_bottom"]
+
+        # Gradiente tri-punto (top → mid → bottom) para más riqueza
+        half_h = self._height // 2
         for y in range(self._height):
-            ratio = y / self._height
-            # Ease-in-out para gradiente más suave
-            ratio = ratio * ratio * (3 - 2 * ratio)
-            r = int(top[0] + (bottom[0] - top[0]) * ratio)
-            g = int(top[1] + (bottom[1] - top[1]) * ratio)
-            b = int(top[2] + (bottom[2] - top[2]) * ratio)
+            if y < half_h:
+                ratio = y / half_h
+                ratio = ratio * ratio * (3 - 2 * ratio)
+                r = int(top[0] + (mid[0] - top[0]) * ratio)
+                g = int(top[1] + (mid[1] - top[1]) * ratio)
+                b = int(top[2] + (mid[2] - top[2]) * ratio)
+            else:
+                ratio = (y - half_h) / half_h
+                ratio = ratio * ratio * (3 - 2 * ratio)
+                r = int(mid[0] + (bottom[0] - mid[0]) * ratio)
+                g = int(mid[1] + (bottom[1] - mid[1]) * ratio)
+                b = int(mid[2] + (bottom[2] - mid[2]) * ratio)
             draw.line([(0, y), (self._width, y)], fill=(r, g, b, 255))
 
-        # Patrón geométrico sutil
+        # Patrón temático
         if add_pattern:
-            self._draw_subtle_pattern(draw)
+            self._draw_themed_pattern(draw, theme, seed=theme_index * 100 + 42)
 
         return img
 
-    def _draw_subtle_pattern(self, draw: ImageDraw.ImageDraw, t: float = 0.0) -> None:
-        """Dibuja un patrón premium con aurora/nebula, orbs conectados y estrellas."""
-        import random
-        rng = random.Random(42)
-        w, h = self._width, self._height
+    def _draw_themed_pattern(
+        self,
+        draw: ImageDraw.ImageDraw,
+        theme: dict,
+        seed: int = 42,
+    ) -> None:
+        """Dibuja un patrón de fondo basado en el tema seleccionado.
 
-        # === Nebula / Aurora layers ===
-        nebula_colors = [
-            (108, 92, 231, 12),   # Violeta difuso
-            (0, 206, 209, 10),    # Turquesa difuso
-            (255, 105, 180, 8),   # Rosa difuso
-            (80, 60, 200, 10),    # Indigo
-        ]
-        for _ in range(6):
-            nx = rng.randint(-100, w + 100)
-            ny = rng.randint(-100, h + 100)
+        Cada tema tiene su propio estilo visual único:
+        - nebula: nubes cósmicas + estrellas + orbs conectados
+        - ocean: ondas fluidas + burbujas + reflejos
+        - neon: rayas diagonales neon + partículas de fuego
+        - crystal: red hexagonal + reflejos cristalinos
+        - aurora: bandas curvadas luminosas + cielo estrellado
+        - electric: rayos estilizados + chispas + red eléctrica
+        """
+        import random
+        rng = random.Random(seed)
+        w, h = self._width, self._height
+        style = theme.get("style", "nebula")
+        nebula_colors = theme["nebula_colors"]
+        orb_colors = theme["orb_colors"]
+        accent = theme["accent"]
+
+        # === Paso 1: Nubes difusas / nebulas (todos los temas) ===
+        num_clouds = 8 if style in ("nebula", "aurora") else 6
+        max_cloud_r = 220 if style in ("nebula", "aurora") else 160
+        for _ in range(num_clouds):
+            nx = rng.randint(-150, w + 150)
+            ny = rng.randint(-150, h + 150)
             nc = rng.choice(nebula_colors)
-            for radius in range(180, 0, -8):
-                alpha = int(nc[3] * (1 - radius / 180) ** 0.5)
+            for radius in range(max_cloud_r, 0, -7):
+                alpha = int(nc[3] * (1 - radius / max_cloud_r) ** 0.5)
                 if alpha > 0:
                     draw.ellipse(
                         (nx - radius, ny - radius, nx + radius, ny + radius),
                         fill=(nc[0], nc[1], nc[2], alpha),
                     )
 
-        # === Grid de líneas diagonales cruzadas (más tenues) ===
-        line_color = (255, 255, 255, 6)
-        spacing = 90
-        for x in range(-h, w + h, spacing):
-            draw.line([(x, 0), (x - h // 2, h)], fill=line_color, width=1)
-        for x in range(-h, w + h, spacing):
-            draw.line([(x, 0), (x + h // 2, h)], fill=line_color, width=1)
+        # === Paso 2: Patrón geométrico específico del tema ===
+        if style == "nebula":
+            # Grid diagonal cruzado tenue
+            line_color = (255, 255, 255, 6)
+            spacing = 90
+            for x in range(-h, w + h, spacing):
+                draw.line([(x, 0), (x - h // 2, h)], fill=line_color, width=1)
+                draw.line([(x, 0), (x + h // 2, h)], fill=line_color, width=1)
 
-        # === Orbs de luz grandes con halo ===
+        elif style == "ocean":
+            # Ondas sinusoidales horizontales
+            for wave_i in range(12):
+                wave_y = rng.randint(0, h)
+                wave_alpha = rng.randint(6, 15)
+                points = []
+                for px in range(0, w + 20, 8):
+                    dy = int(30 * math.sin(px / 120 + wave_i * 0.7))
+                    points.append((px, wave_y + dy))
+                if len(points) >= 2:
+                    draw.line(points, fill=(*accent, wave_alpha), width=2)
+            # Burbujas
+            for _ in range(40):
+                bx = rng.randint(0, w)
+                by = rng.randint(0, h)
+                br = rng.randint(3, 12)
+                ba = rng.randint(8, 25)
+                draw.ellipse(
+                    (bx - br, by - br, bx + br, by + br),
+                    outline=(*accent, ba), width=1,
+                )
+                # Reflejo de luz en burbuja
+                rr = max(1, br // 3)
+                draw.ellipse(
+                    (bx - br + 2, by - br + 2, bx - br + 2 + rr, by - br + 2 + rr),
+                    fill=(255, 255, 255, ba),
+                )
+
+        elif style == "neon":
+            # Rayas diagonales neon con brillo
+            for stripe_i in range(18):
+                sx = rng.randint(-h, w + h)
+                stripe_alpha = rng.randint(8, 20)
+                stripe_color = rng.choice(orb_colors)
+                stripe_w = rng.randint(1, 3)
+                draw.line(
+                    [(sx, 0), (sx - h // 3, h)],
+                    fill=(*stripe_color, stripe_alpha), width=stripe_w,
+                )
+            # Chispas de fuego (puntos brillantes)
+            for _ in range(60):
+                sx = rng.randint(0, w)
+                sy = rng.randint(0, h)
+                ss = rng.randint(1, 4)
+                sa = rng.randint(30, 90)
+                sc = rng.choice(orb_colors)
+                draw.ellipse(
+                    (sx - ss, sy - ss, sx + ss, sy + ss),
+                    fill=(*sc, sa),
+                )
+
+        elif style == "crystal":
+            # Red hexagonal
+            hex_size = 80
+            hex_alpha = 8
+            for row in range(-2, h // hex_size + 3):
+                for col in range(-2, w // hex_size + 3):
+                    cx = int(col * hex_size * 1.5)
+                    cy = int(row * hex_size * math.sqrt(3) + (col % 2) * hex_size * math.sqrt(3) / 2)
+                    # Dibujar hexágono
+                    hex_points = []
+                    for vi in range(6):
+                        angle = math.radians(60 * vi + 30)
+                        hx = cx + int(hex_size * 0.5 * math.cos(angle))
+                        hy = cy + int(hex_size * 0.5 * math.sin(angle))
+                        hex_points.append((hx, hy))
+                    if len(hex_points) == 6:
+                        draw.polygon(hex_points, outline=(*accent, hex_alpha))
+            # Reflejos cristalinos (líneas brillantes cortas)
+            for _ in range(25):
+                lx = rng.randint(0, w)
+                ly = rng.randint(0, h)
+                ll = rng.randint(15, 50)
+                la = rng.randint(10, 25)
+                angle = rng.uniform(0, math.pi)
+                x2 = lx + int(ll * math.cos(angle))
+                y2 = ly + int(ll * math.sin(angle))
+                draw.line([(lx, ly), (x2, y2)], fill=(255, 255, 255, la), width=1)
+
+        elif style == "aurora":
+            # Bandas curvadas luminosas
+            for band_i in range(6):
+                band_y = rng.randint(h // 6, h * 5 // 6)
+                band_color = rng.choice(orb_colors)
+                band_alpha_base = rng.randint(6, 14)
+                band_thickness = rng.randint(40, 100)
+                for dy in range(-band_thickness, band_thickness, 3):
+                    alpha = int(band_alpha_base * (1 - abs(dy) / band_thickness) ** 2)
+                    if alpha <= 0:
+                        continue
+                    points = []
+                    for px in range(0, w + 20, 12):
+                        curve_y = band_y + dy + int(
+                            50 * math.sin(px / 200 + band_i * 1.5)
+                            + 25 * math.sin(px / 80 + band_i * 3)
+                        )
+                        points.append((px, curve_y))
+                    if len(points) >= 2:
+                        draw.line(points, fill=(*band_color, alpha), width=1)
+
+        elif style == "electric":
+            # Rayos estilizados
+            for _ in range(5):
+                sx = rng.randint(w // 4, w * 3 // 4)
+                sy = rng.randint(0, h // 4)
+                bolt_color = rng.choice(orb_colors)
+                bolt_alpha = rng.randint(12, 25)
+                points = [(sx, sy)]
+                for _ in range(rng.randint(6, 12)):
+                    last = points[-1]
+                    nx = last[0] + rng.randint(-60, 60)
+                    ny = last[1] + rng.randint(40, 120)
+                    points.append((nx, ny))
+                    if ny > h:
+                        break
+                if len(points) >= 2:
+                    draw.line(points, fill=(*bolt_color, bolt_alpha), width=2)
+                    # Glow del rayo
+                    draw.line(points, fill=(*bolt_color, bolt_alpha // 3), width=6)
+            # Red eléctrica (líneas finas conectando puntos)
+            nodes = [(rng.randint(0, w), rng.randint(0, h)) for _ in range(15)]
+            for i, (x1, y1) in enumerate(nodes):
+                for x2, y2 in nodes[i + 1:]:
+                    dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+                    if dist < 400:
+                        la = int(6 * (1 - dist / 400))
+                        if la > 0:
+                            draw.line([(x1, y1), (x2, y2)], fill=(*accent, la), width=1)
+
+        # === Paso 3: Orbs de luz (todos los temas) ===
         orbs = []
-        for _ in range(10):
+        num_orbs = 12 if style in ("nebula", "crystal") else 8
+        for _ in range(num_orbs):
             ox = rng.randint(30, w - 30)
             oy = rng.randint(30, h - 30)
-            orb_color = rng.choice([
-                (108, 92, 231),   # Violeta
-                (0, 206, 209),    # Turquesa
-                (255, 105, 180),  # Rosa
-                (160, 120, 255),  # Lila
-                (0, 200, 150),    # Esmeralda
-            ])
-            orb_size = rng.randint(35, 75)
+            orb_color = rng.choice(orb_colors)
+            orb_size = rng.randint(30, 80)
             orbs.append((ox, oy, orb_color, orb_size))
 
             # Halo exterior difuso
-            for radius in range(orb_size + 30, orb_size, -3):
-                alpha = int(4 * (1 - (radius - orb_size) / 30))
+            for radius in range(orb_size + 35, orb_size, -3):
+                alpha = int(5 * (1 - (radius - orb_size) / 35))
                 draw.ellipse(
                     (ox - radius, oy - radius, ox + radius, oy + radius),
                     fill=(*orb_color, alpha),
                 )
             # Orb principal con glow
             for radius in range(orb_size, 0, -4):
-                alpha = int(10 * (1 - radius / orb_size) ** 0.7)
+                alpha = int(12 * (1 - radius / orb_size) ** 0.7)
                 draw.ellipse(
                     (ox - radius, oy - radius, ox + radius, oy + radius),
                     fill=(*orb_color, alpha),
@@ -160,15 +412,15 @@ class SceneComposer:
             core_r = max(3, orb_size // 5)
             draw.ellipse(
                 (ox - core_r, oy - core_r, ox + core_r, oy + core_r),
-                fill=(*orb_color, 35),
+                fill=(*orb_color, 40),
             )
 
-        # === Líneas de energía entre orbs cercanos ===
+        # === Paso 4: Líneas de energía entre orbs cercanos ===
         for i, (x1, y1, c1, _) in enumerate(orbs):
             for x2, y2, _, _ in orbs[i + 1:]:
                 dist = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-                if dist < 500:  # Solo conectar orbs cercanos
-                    line_alpha = int(8 * (1 - dist / 500))
+                if dist < 500:
+                    line_alpha = int(10 * (1 - dist / 500))
                     if line_alpha > 0:
                         draw.line(
                             [(x1, y1), (x2, y2)],
@@ -176,20 +428,19 @@ class SceneComposer:
                             width=1,
                         )
 
-        # === Estrellas con variación de brillo (twinkle) ===
-        for _ in range(100):
+        # === Paso 5: Estrellas con twinkle (todos los temas) ===
+        num_stars = 120 if style in ("nebula", "aurora", "electric") else 80
+        for _ in range(num_stars):
             x = rng.randint(0, w)
             y = rng.randint(0, h)
             size = rng.randint(1, 3)
-            # Variar alpha para efecto twinkle
-            base_alpha = rng.randint(15, 70)
+            base_alpha = rng.randint(15, 80)
             draw.ellipse(
                 (x - size, y - size, x + size, y + size),
                 fill=(255, 255, 255, base_alpha),
             )
-            # Cruz de brillo para estrellas más grandes
             if size >= 2 and base_alpha > 40:
-                cross_len = size + rng.randint(2, 5)
+                cross_len = size + rng.randint(2, 6)
                 cross_alpha = base_alpha // 3
                 draw.line(
                     [(x - cross_len, y), (x + cross_len, y)],
@@ -200,16 +451,33 @@ class SceneComposer:
                     fill=(255, 255, 255, cross_alpha), width=1,
                 )
 
-        # === Triángulos geométricos sutiles ===
-        for _ in range(8):
-            tx = rng.randint(50, w - 50)
-            ty = rng.randint(50, h - 50)
-            ts = rng.randint(10, 25)
-            tri_alpha = rng.randint(8, 20)
-            draw.polygon(
-                [(tx, ty - ts), (tx + ts, ty + ts), (tx - ts, ty + ts)],
-                outline=(255, 255, 255, tri_alpha),
-            )
+        # === Paso 6: Formas geométricas decorativas ===
+        if style in ("nebula", "crystal", "electric"):
+            for _ in range(10):
+                tx = rng.randint(50, w - 50)
+                ty = rng.randint(50, h - 50)
+                ts = rng.randint(10, 28)
+                tri_alpha = rng.randint(8, 22)
+                shape = rng.choice(["triangle", "diamond", "square"])
+                if shape == "triangle":
+                    draw.polygon(
+                        [(tx, ty - ts), (tx + ts, ty + ts), (tx - ts, ty + ts)],
+                        outline=(*accent, tri_alpha),
+                    )
+                elif shape == "diamond":
+                    draw.polygon(
+                        [(tx, ty - ts), (tx + ts, ty), (tx, ty + ts), (tx - ts, ty)],
+                        outline=(*accent, tri_alpha),
+                    )
+                else:
+                    draw.rectangle(
+                        (tx - ts // 2, ty - ts // 2, tx + ts // 2, ty + ts // 2),
+                        outline=(*accent, tri_alpha),
+                    )
+
+    def _draw_subtle_pattern(self, draw: ImageDraw.ImageDraw, t: float = 0.0) -> None:
+        """Compatibilidad: dibuja el patrón del tema 0 (Nebula Cosmos)."""
+        self._draw_themed_pattern(draw, self._BACKGROUND_THEMES[0], seed=42)
 
     def _draw_text_with_shadow(
         self,
@@ -361,11 +629,19 @@ class SceneComposer:
         # Centrar horizontalmente
         x = (self._width - total_width) // 2
 
-        for i, (text, _is_emoji) in enumerate(segments):
+        for i, (text, is_emoji) in enumerate(segments):
             w, h, font = segment_widths[i]
             text_y = y + (max_height - h) // 2  # Alinear verticalmente
 
-            if outline:
+            if is_emoji and emoji_font:
+                try:
+                    draw.text((x, text_y), text, font=font, embedded_color=True)
+                except Exception:
+                    try:
+                        draw.text((x, text_y), text, font=font)
+                    except Exception:
+                        pass
+            elif outline:
                 self._draw_text_with_outline(
                     draw, text, x, text_y, font,
                     fill=fill, outline_width=outline_width,
@@ -531,7 +807,7 @@ class SceneComposer:
                         draw.text(
                             (x, self._height // 2 - 320),
                             emoji, font=emoji_font,
-                            fill=(255, 255, 255, 255),
+                            embedded_color=True,
                         )
                 except Exception:
                     pass
@@ -635,6 +911,7 @@ class SceneComposer:
             color_top=self._colors.fondo,
             color_bottom=self._colors.fondo_secundario,
             add_pattern=True,
+            theme_index=question_number - 1,
         )
         draw = ImageDraw.Draw(img)
 
@@ -762,6 +1039,10 @@ class SceneComposer:
                 font=banner_font,
             )
 
+        # Obtener accent del tema activo
+        theme = self._BACKGROUND_THEMES[(question_number - 1) % len(self._BACKGROUND_THEMES)]
+        theme_accent = theme["accent"]
+
         for i, answer in enumerate(answers):
             option_y = option_start_y + i * (option_height + option_margin)
             is_correct = (show_correct and (
@@ -769,92 +1050,158 @@ class SceneComposer:
             ))
             is_incorrect = show_correct and not is_correct
 
-            # Determinar colores
+            # ===== Paleta de colores por estado =====
+            # Colores gradiente para el stripe lateral de cada opción
+            option_accents = [
+                ((108, 92, 231), (160, 120, 255)),   # A: Violeta → Lila
+                ((0, 206, 209), (0, 240, 200)),      # B: Turquesa → Menta
+                ((255, 105, 180), (255, 160, 200)),   # C: Rosa → Rosa claro
+                ((255, 180, 0), (255, 220, 80)),      # D: Naranja → Dorado
+            ]
+            accent_a, accent_b = option_accents[i % len(option_accents)]
+
             if is_correct:
                 card_bg = self._hex_to_rgb(self._colors.correcto)
                 card_alpha = 220
                 text_color = (255, 255, 255)
                 label_bg = (0, 200, 80)
-                border_color = (255, 215, 0)  # Borde dorado
+                border_color_a = (255, 215, 0)
+                border_color_b = (0, 255, 130)
                 border_width = 4
+                shadow_color = (0, 200, 80)
             elif is_incorrect:
                 card_bg = (30, 30, 45)
                 card_alpha = 80
                 text_color = (90, 90, 100)
                 label_bg = (50, 50, 60)
-                border_color = (50, 50, 60)
+                border_color_a = (50, 50, 60)
+                border_color_b = (50, 50, 60)
                 border_width = 1
+                shadow_color = (0, 0, 0)
             else:
-                card_bg = (25, 25, 45)
-                card_alpha = 200
+                card_bg = (20, 20, 40)
+                card_alpha = 210
                 text_color = self._hex_to_rgb(self._colors.texto)
-                label_bg = self._hex_to_rgb(self._colors.primario)
-                border_color = self._hex_to_rgb(self._colors.primario)
+                label_bg = accent_a
+                border_color_a = accent_a
+                border_color_b = accent_b
                 border_width = 2
+                shadow_color = accent_a
 
-            # Card con sombra
             card_xy = (50, option_y, self._width - 50, option_y + option_height)
 
-            # Sombra debajo
+            # ===== Sombra coloreada difusa (no negra) =====
             if not is_incorrect:
-                shadow_xy = (52, option_y + 3, self._width - 48, option_y + option_height + 3)
-                draw.rounded_rectangle(
-                    shadow_xy, radius=16,
-                    fill=(0, 0, 0, 60),
-                )
+                for si in range(3, 0, -1):
+                    sh_alpha = 20 + si * 10
+                    sh_offset = si + 2
+                    draw.rounded_rectangle(
+                        (50 + si, option_y + sh_offset,
+                         self._width - 50 + si, option_y + option_height + sh_offset),
+                        radius=16,
+                        fill=(*shadow_color, sh_alpha),
+                    )
 
-            # Card principal
+            # ===== Card glassmorphism premium =====
             draw.rounded_rectangle(
-                card_xy, radius=16,
+                card_xy, radius=18,
                 fill=(*card_bg, card_alpha),
-                outline=(*border_color, 200 if is_correct else 100),
-                width=border_width,
             )
 
-            # Accent stripe lateral izquierdo
-            stripe_color = (*label_bg, 255) if not is_incorrect else (*label_bg, 80)
+            # ===== Borde luminoso con gradiente =====
+            # Borde superior (accent_a) → inferior (accent_b)
+            bw = border_width
+            border_alpha = 200 if is_correct else 120
+            # Top border
             draw.rounded_rectangle(
-                (50, option_y, 58, option_y + option_height),
-                radius=4,
-                fill=stripe_color,
+                (50, option_y, self._width - 50, option_y + bw),
+                radius=2,
+                fill=(*border_color_a, border_alpha),
+            )
+            # Bottom border
+            draw.rounded_rectangle(
+                (50, option_y + option_height - bw, self._width - 50, option_y + option_height),
+                radius=2,
+                fill=(*border_color_b, border_alpha // 2),
+            )
+            # Left border
+            draw.rectangle(
+                (50, option_y + bw, 50 + bw, option_y + option_height - bw),
+                fill=(*border_color_a, border_alpha // 2),
+            )
+            # Right border
+            draw.rectangle(
+                (self._width - 50 - bw, option_y + bw,
+                 self._width - 50, option_y + option_height - bw),
+                fill=(*border_color_b, border_alpha // 2),
             )
 
-            # Brillo superior sutil (solo si no es incorrecta)
-            if not is_incorrect:
-                draw.rounded_rectangle(
-                    (52, option_y + 1, self._width - 52, option_y + 3),
-                    radius=2,
-                    fill=(255, 255, 255, 15),
+            # ===== Stripe lateral con gradiente multi-color =====
+            stripe_w = 6
+            for sy in range(option_y, option_y + option_height):
+                ratio = (sy - option_y) / max(1, option_height)
+                sr = int(accent_a[0] + (accent_b[0] - accent_a[0]) * ratio)
+                sg = int(accent_a[1] + (accent_b[1] - accent_a[1]) * ratio)
+                sb = int(accent_a[2] + (accent_b[2] - accent_a[2]) * ratio)
+                sa = 255 if not is_incorrect else 80
+                draw.line(
+                    [(50, sy), (50 + stripe_w, sy)],
+                    fill=(sr, sg, sb, sa),
                 )
 
-            # Check mark grande para respuesta correcta
+            # ===== Inner light effect — brillo superior sutil =====
+            if not is_incorrect:
+                for iy in range(8):
+                    inner_alpha = int(25 * (1 - iy / 8))
+                    draw.line(
+                        [(52, option_y + 1 + iy), (self._width - 52, option_y + 1 + iy)],
+                        fill=(255, 255, 255, inner_alpha),
+                    )
+
+            # ===== Glow detrás del label circular =====
+            label_cx = 100
+            label_cy = option_y + option_height // 2
+            if not is_incorrect:
+                for gr in range(30, 0, -3):
+                    ga = int(15 * (1 - gr / 30))
+                    draw.ellipse(
+                        (label_cx - gr, label_cy - gr, label_cx + gr, label_cy + gr),
+                        fill=(*label_bg, ga),
+                    )
+
+            # ===== Check mark para respuesta correcta =====
             if is_correct:
-                # Draw checkmark as geometric lines (no Unicode dependency)
+                # Glow detrás del checkmark
                 chk_cx = self._width - 88
                 chk_cy = option_y + option_height // 2
+                for gr in range(20, 0, -2):
+                    ga = int(30 * (1 - gr / 20))
+                    draw.ellipse(
+                        (chk_cx - gr, chk_cy - gr, chk_cx + gr, chk_cy + gr),
+                        fill=(0, 255, 130, ga),
+                    )
                 draw.line(
                     [(chk_cx - 12, chk_cy), (chk_cx - 3, chk_cy + 11),
                      (chk_cx + 14, chk_cy - 11)],
                     fill=(255, 255, 255, 255), width=4,
                 )
 
-            # Label circular (A, B, C, D)
+            # ===== Label circular (A, B, C, D) =====
             label = labels[i] if i < len(labels) else str(i + 1)
             self._draw_label_circle(
                 draw,
-                center_x=100,
-                center_y=option_y + option_height // 2,
+                center_x=label_cx,
+                center_y=label_cy,
                 label=label,
                 font=label_font,
                 bg_color=label_bg,
-                radius=20,
+                radius=22,
             )
 
-            # Texto de la respuesta SIN emojis (para evitar encoding issues)
+            # ===== Texto de la respuesta =====
             answer_text = answer.get('texto', '')
 
-            # Truncar si es muy largo
-            max_text_width = self._width - 200
+            max_text_width = self._width - 220
             bbox_test = draw.textbbox((0, 0), answer_text, font=answer_font)
             if bbox_test[2] - bbox_test[0] > max_text_width:
                 while len(answer_text) > 3:
@@ -864,7 +1211,7 @@ class SceneComposer:
                         answer_text += "..."
                         break
 
-            text_x = 135
+            text_x = 140
             text_y = option_y + (option_height - 30) // 2
 
             # Sombra de texto
@@ -872,7 +1219,7 @@ class SceneComposer:
                 draw.text(
                     (text_x + 2, text_y + 2),
                     answer_text,
-                    fill=(0, 0, 0, 80),
+                    fill=(0, 0, 0, 90),
                     font=answer_font,
                 )
 
@@ -1024,31 +1371,36 @@ class SceneComposer:
         y: int,
         center_x: int | None = None,
     ) -> None:
-        """Dibuja el temporizador estilo reloj premium — con tick marks, glow y urgencia."""
+        """Dibuja el temporizador premium rediseñado — grande, con doble anillo,
+        glassmorphism, números con glow, y halo dramático de urgencia."""
         timer_font = self._get_font(
             self._fonts_config.principal,
-            52,  # Tamaño ajustado para el timer más grande
+            58,  # Número grande y legible
         )
 
         display_value = max(1, math.ceil(value))
 
+        # === Colores según urgencia ===
         if display_value <= 3:
             color = self._hex_to_rgb(self._colors.incorrecto)
+            color_secondary = (255, 100, 80)
         elif display_value <= 5:
             color = self._hex_to_rgb(self._colors.advertencia)
+            color_secondary = (255, 230, 80)
         else:
             color = self._hex_to_rgb(self._colors.primario)
+            color_secondary = (160, 140, 255)
 
         if center_x is None:
             center_x = self._width // 2
-        radius = 42  # Radio compacto para esquina superior
-        center_y = y + radius + 5
+        radius = 55  # Radio más grande para mejor visibilidad
+        center_y = y + radius + 8
 
-        # === Glow exterior pulsante ===
-        # Más intenso cuando queda poco tiempo
-        glow_intensity = 30 if display_value <= 3 else 15
-        for gi in range(18, 0, -2):
-            glow_alpha = int(glow_intensity * (1 - gi / 18))
+        # === Halo exterior pulsante ===
+        glow_range = 28 if display_value <= 3 else (22 if display_value <= 5 else 16)
+        glow_max_alpha = 40 if display_value <= 3 else (25 if display_value <= 5 else 15)
+        for gi in range(glow_range, 0, -2):
+            glow_alpha = int(glow_max_alpha * (1 - gi / glow_range) ** 0.7)
             glow_r = radius + gi
             draw.ellipse(
                 (center_x - glow_r, center_y - glow_r,
@@ -1056,21 +1408,45 @@ class SceneComposer:
                 fill=(*color, glow_alpha),
             )
 
-        # === Fondo circular oscuro ===
+        # === Anillo exterior decorativo (borde brillante fino) ===
+        outer_ring_r = radius + 3
+        draw.arc(
+            (center_x - outer_ring_r, center_y - outer_ring_r,
+             center_x + outer_ring_r, center_y + outer_ring_r),
+            0, 360,
+            fill=(*color, 50),
+            width=2,
+        )
+
+        # === Fondo glassmorphism (oscuro semi-transparente) ===
+        # Anillo exterior de fondo
         draw.ellipse(
             (center_x - radius, center_y - radius,
              center_x + radius, center_y + radius),
-            fill=(15, 15, 25, 230),
+            fill=(10, 10, 20, 235),
         )
+        # Efecto de brillo interior (glassmorphism)
+        for gy in range(radius * 2):
+            gx_start = center_x - radius
+            actual_y = center_y - radius + gy
+            ratio = gy / (radius * 2)
+            if ratio < 0.4:
+                glass_alpha = int(20 * (1 - ratio / 0.4))
+                half_w = int(math.sqrt(max(0, radius ** 2 - (gy - radius) ** 2)))
+                if half_w > 0 and glass_alpha > 0:
+                    draw.line(
+                        [(center_x - half_w, actual_y), (center_x + half_w, actual_y)],
+                        fill=(255, 255, 255, glass_alpha),
+                    )
 
-        # === Tick marks estilo reloj (12 marcas) ===
+        # === Tick marks estilo reloj premium (12 marcas) ===
         for i in range(12):
             angle = math.radians(i * 30 - 90)
-            inner_r = radius - 8
-            outer_r = radius - 3
-            # Marcas más gruesas cada 3 (como un reloj: 12, 3, 6, 9)
-            tick_w = 2 if i % 3 == 0 else 1
-            tick_alpha = 180 if i % 3 == 0 else 80
+            is_major = i % 3 == 0
+            inner_r = radius - 12 if is_major else radius - 9
+            outer_r = radius - 4
+            tick_w = 3 if is_major else 1
+            tick_alpha = 200 if is_major else 70
             x1 = center_x + int(inner_r * math.cos(angle))
             y1 = center_y + int(inner_r * math.sin(angle))
             x2 = center_x + int(outer_r * math.cos(angle))
@@ -1081,75 +1457,107 @@ class SceneComposer:
                 width=tick_w,
             )
 
-        # === Anillo track oscuro ===
+        # === Track del arco (anillo oscuro base) ===
+        track_r = radius - 6
         draw.arc(
-            (center_x - radius + 4, center_y - radius + 4,
-             center_x + radius - 4, center_y + radius - 4),
+            (center_x - track_r, center_y - track_r,
+             center_x + track_r, center_y + track_r),
             0, 360,
-            fill=(60, 60, 80, 150),
-            width=6,
+            fill=(50, 50, 70, 120),
+            width=8,
         )
 
-        # === Arco de progreso (se consume como reloj) ===
+        # === Arco de progreso con gradiente (doble capa) ===
         progress = max(0.0, min(1.0, value / 10.0))
         arc_angle = int(360 * progress)
         if arc_angle > 0:
+            # Capa exterior del arco (color principal)
             draw.arc(
-                (center_x - radius + 4, center_y - radius + 4,
-                 center_x + radius - 4, center_y + radius - 4),
+                (center_x - track_r, center_y - track_r,
+                 center_x + track_r, center_y + track_r),
                 -90, -90 + arc_angle,
                 fill=(*color, 255),
-                width=7,
+                width=8,
+            )
+            # Capa interior brillante del arco (más clara)
+            inner_arc_r = track_r - 2
+            draw.arc(
+                (center_x - inner_arc_r, center_y - inner_arc_r,
+                 center_x + inner_arc_r, center_y + inner_arc_r),
+                -90, -90 + arc_angle,
+                fill=(*color_secondary, 100),
+                width=3,
             )
 
-            # Punto brillante en la punta del arco
+            # Punto brillante en la punta del arco (más grande y vistoso)
             tip_angle = math.radians(-90 + arc_angle)
-            tip_r = radius - 4
+            tip_r = track_r
             tip_x = center_x + int(tip_r * math.cos(tip_angle))
             tip_y = center_y + int(tip_r * math.sin(tip_angle))
-            for gr in range(8, 0, -2):
-                ga = int(50 * (1 - gr / 8))
+            # Glow del punto
+            for gr in range(12, 0, -2):
+                ga = int(60 * (1 - gr / 12))
                 draw.ellipse(
                     (tip_x - gr, tip_y - gr, tip_x + gr, tip_y + gr),
                     fill=(*color, ga),
                 )
+            # Punto blanco brillante
             draw.ellipse(
-                (tip_x - 3, tip_y - 3, tip_x + 3, tip_y + 3),
-                fill=(255, 255, 255, 200),
+                (tip_x - 4, tip_y - 4, tip_x + 4, tip_y + 4),
+                fill=(255, 255, 255, 230),
+            )
+            draw.ellipse(
+                (tip_x - 2, tip_y - 2, tip_x + 2, tip_y + 2),
+                fill=(255, 255, 255, 255),
             )
 
-        # === Anillo interior decorativo ===
-        inner_ring_r = radius - 14
+        # === Anillo interior decorativo con gradiente ===
+        inner_deco_r = radius - 18
         draw.arc(
-            (center_x - inner_ring_r, center_y - inner_ring_r,
-             center_x + inner_ring_r, center_y + inner_ring_r),
+            (center_x - inner_deco_r, center_y - inner_deco_r,
+             center_x + inner_deco_r, center_y + inner_deco_r),
             0, 360,
-            fill=(255, 255, 255, 15),
+            fill=(*color, 20),
             width=1,
         )
 
-        # === Número centrado ===
+        # === Número centrado con glow ===
         text = str(display_value)
         bbox = draw.textbbox((0, 0), text, font=timer_font)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
         text_offset_y = bbox[1]
+        text_x = center_x - text_w // 2
+        text_y_pos = center_y - text_h // 2 - text_offset_y - 3
+
+        # Glow del número (resplandor del color actual)
+        for gd in range(4, 0, -1):
+            ga = int(40 * (1 - gd / 4))
+            for dx in range(-gd, gd + 1):
+                for dy in range(-gd, gd + 1):
+                    if dx * dx + dy * dy <= gd * gd:
+                        draw.text(
+                            (text_x + dx, text_y_pos + dy),
+                            text, fill=(*color, ga), font=timer_font,
+                        )
+
+        # Número principal
         draw.text(
-            (center_x - text_w // 2, center_y - text_h // 2 - text_offset_y),
+            (text_x, text_y_pos),
             text,
             fill=(*color, 255),
             font=timer_font,
         )
 
-        # === Label "seg" debajo del número ===
-        label_font = self._get_font(self._fonts_config.secundaria, 12)
+        # === Label "seg" mejorada ===
+        label_font = self._get_font(self._fonts_config.secundaria, 14)
         label = "seg"
         lbbox = draw.textbbox((0, 0), label, font=label_font)
         lw = lbbox[2] - lbbox[0]
         draw.text(
-            (center_x - lw // 2, center_y + text_h // 2 - 2),
+            (center_x - lw // 2, center_y + text_h // 2 + 2),
             label,
-            fill=(200, 200, 200, 150),
+            fill=(*color_secondary, 180),
             font=label_font,
         )
 
