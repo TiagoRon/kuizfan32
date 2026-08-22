@@ -591,18 +591,29 @@ class VideoEngine:
                 warning_time = float(timer_seconds - 5)
                 warning_path = self._sfx_manager.get_sfx(SFXManager.TIMER_WARNING)
                 audio_layers.append(
-                    _safe_audio_clip(str(warning_path)).with_start(warning_time).with_volume_scaled(0.6),
+                    _safe_audio_clip(str(warning_path)).with_start(warning_time).with_volume_scaled(0.8),
                 )
             except Exception:
                 pass
 
-        # SFX crítico en el último segundo
+        # SFX de warning repetido al llegar a 3 segundos (urgencia creciente)
+        if timer_seconds > 3:
+            try:
+                warning3_time = float(timer_seconds - 3)
+                warning_path = self._sfx_manager.get_sfx(SFXManager.TIMER_WARNING)
+                audio_layers.append(
+                    _safe_audio_clip(str(warning_path)).with_start(warning3_time).with_volume_scaled(0.9),
+                )
+            except Exception:
+                pass
+
+        # SFX crítico en el último segundo (volumen alto)
         if timer_seconds > 1:
             try:
                 critical_time = float(timer_seconds - 1)
                 critical_path = self._sfx_manager.get_sfx(SFXManager.TIMER_CRITICAL)
                 audio_layers.append(
-                    _safe_audio_clip(str(critical_path)).with_start(critical_time).with_volume_scaled(0.7),
+                    _safe_audio_clip(str(critical_path)).with_start(critical_time).with_volume_scaled(0.9),
                 )
             except Exception:
                 pass

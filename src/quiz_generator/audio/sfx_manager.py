@@ -340,56 +340,90 @@ class SFXManager:
         _save_wav(wave_data * env, path)
 
     def _generate_timer_warning(self, path: Path) -> None:
-        """Alarma de advertencia del timer — beep-beep rápido ascendente.
+        """Alarma de advertencia del timer — triple beep ascendente con tremolo.
 
-        Se reproduce cuando quedan ~5 segundos. Dos pulsos cortos
-        que suben de tono para crear tensión.
+        Se reproduce cuando quedan ~5 segundos. Tres pulsos rápidos
+        con tremolo, armónicos y pitch ascendente para máxima tensión.
         """
         full = np.array([], dtype=np.float64)
 
-        # Dos pulsos rápidos ascendentes
-        for i, freq in enumerate([800, 1000]):
-            note = _sine_wave(freq, 0.08, 0.5)
-            note += _sine_wave(freq * 2, 0.08, 0.2)  # Armónico
-            note += _sine_wave(freq * 1.5, 0.08, 0.1)  # Quinta
-            note *= _envelope(len(note), attack=0.003, release=0.05)
+        # Tres pulsos ascendentes con tremolo de tensión
+        for i, freq in enumerate([700, 900, 1200]):
+            dur = 0.12
+            n = int(SAMPLE_RATE * dur)
+            t = np.linspace(0, dur, n, endpoint=False)
 
-            if i < 1:
-                gap = np.zeros(int(SAMPLE_RATE * 0.06))
-                note = np.concatenate([note, gap])
+            # Tono principal + armónicos ricos
+            note = 0.45 * np.sin(2 * np.pi * freq * t)
+            note += 0.20 * np.sin(2 * np.pi * freq * 2 * t)  # Octava
+            note += 0.10 * np.sin(2 * np.pi * freq * 3 * t)  # 3ra armónica
+            note += 0.08 * np.sin(2 * np.pi * freq * 1.5 * t)  # Quinta
 
-            full = np.concatenate([full, note])
+            # Tremolo rápido (AM vibrato) para tensión
+            tremolo = 0.7 + 0.3 * np.sin(2 * np.pi * 20 * t)
+            note *= tremolo
+
+            note *= _envelope(len(note), attack=0.003, release=0.06)
+
+            gap = np.zeros(int(SAMPLE_RATE * 0.06))
+            full = np.concatenate([full, note, gap])
+
+        # Cola reverberante descendente
+        tail_dur = 0.15
+        n_tail = int(SAMPLE_RATE * tail_dur)
+        t_tail = np.linspace(0, tail_dur, n_tail, endpoint=False)
+        freqs_tail = np.linspace(1200, 600, n_tail)
+        phase_tail = np.cumsum(freqs_tail / SAMPLE_RATE) * 2 * np.pi
+        tail = 0.25 * np.sin(phase_tail)
+        tail *= _envelope(n_tail, attack=0.002, release=0.12)
+        full = np.concatenate([full, tail])
 
         _save_wav(full, path)
 
     def _generate_timer_critical(self, path: Path) -> None:
-        """Alarma crítica del timer — heartbeat + alerta de urgencia máxima.
+        """Alarma crítica del timer — sirena + heartbeat grave + impacto.
 
-        Se reproduce en el último segundo. Simula un latido de corazón
-        con un tono de alarma agudo.
+        Se reproduce en el último segundo. Combina una sirena tipo
+        ambulancia oscilante, un heartbeat profundo (lub-dub) y un
+        impacto de cierre dramático.
         """
         full = np.array([], dtype=np.float64)
 
-        # Heartbeat: dos pulsos graves cortos (lub-dub)
-        for i, (freq, dur) in enumerate([(60, 0.08), (80, 0.06)]):
-            beat = _sine_wave(freq, dur, 0.7)
-            beat += _sine_wave(freq * 2, dur, 0.3)
-            beat *= _envelope(len(beat), attack=0.003, release=dur * 0.7)
-            gap = np.zeros(int(SAMPLE_RATE * (0.04 if i == 0 else 0.08)))
+        # 1. Heartbeat profundo: lub-dub (grave, con peso)
+        for i, (freq, dur) in enumerate([(55, 0.10), (70, 0.07)]):
+            n_beat = int(SAMPLE_RATE * dur)
+            t_beat = np.linspace(0, dur, n_beat, endpoint=False)
+            beat = 0.8 * np.sin(2 * np.pi * freq * t_beat)
+            beat += 0.4 * np.sin(2 * np.pi * freq * 2 * t_beat)
+            beat += 0.2 * np.sin(2 * np.pi * freq * 0.5 * t_beat)  # Sub-sub bass
+            beat *= _envelope(n_beat, attack=0.004, release=dur * 0.6)
+            gap = np.zeros(int(SAMPLE_RATE * (0.04 if i == 0 else 0.06)))
             full = np.concatenate([full, beat, gap])
 
-        # Alarma aguda
-        alarm_dur = 0.2
-        n_alarm = int(SAMPLE_RATE * alarm_dur)
-        t_alarm = np.linspace(0, alarm_dur, n_alarm, endpoint=False)
-        # Frecuencia ascendente rápida (800 → 1600 Hz)
-        freq_sweep = np.linspace(800, 1600, n_alarm)
-        phase = np.cumsum(freq_sweep / SAMPLE_RATE) * 2 * np.pi
-        alarm = 0.45 * np.sin(phase)
-        alarm += 0.15 * np.sin(phase * 2)  # Armónico
-        alarm *= _envelope(n_alarm, attack=0.005, release=0.12)
+        # 2. Sirena oscilante (800→1400→800 Hz wobble)
+        siren_dur = 0.3
+        n_siren = int(SAMPLE_RATE * siren_dur)
+        t_siren = np.linspace(0, siren_dur, n_siren, endpoint=False)
+        # Frecuencia oscilante tipo sirena
+        siren_freq = 1100 + 300 * np.sin(2 * np.pi * 6 * t_siren)
+        siren_phase = np.cumsum(siren_freq / SAMPLE_RATE) * 2 * np.pi
+        siren = 0.35 * np.sin(siren_phase)
+        siren += 0.12 * np.sin(siren_phase * 2)  # Armónico agudo
+        siren += 0.08 * np.sin(siren_phase * 3)
+        siren *= _envelope(n_siren, attack=0.008, release=0.15)
+        full = np.concatenate([full, siren])
 
-        full = np.concatenate([full, alarm])
+        # 3. Impacto de cierre (frecuencia descendente rápida + ruido)
+        impact_dur = 0.08
+        n_impact = int(SAMPLE_RATE * impact_dur)
+        t_impact = np.linspace(0, impact_dur, n_impact, endpoint=False)
+        impact_freq = np.linspace(2000, 200, n_impact)
+        impact_phase = np.cumsum(impact_freq / SAMPLE_RATE) * 2 * np.pi
+        impact = 0.5 * np.sin(impact_phase)
+        impact += np.random.RandomState(42).randn(n_impact) * 0.15  # Ruido de impacto
+        impact *= _envelope(n_impact, attack=0.001, release=0.06)
+        full = np.concatenate([full, impact])
+
         _save_wav(full, path)
 
     # Mapeo de nombre → generador
